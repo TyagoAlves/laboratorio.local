@@ -82,7 +82,8 @@ services:
       USERNAME: Administrator
       PASSWORD: ${ADMIN_PASSWORD:-SenhaForte@2026}
       ARGUMENTS: >-
-        -netdev user,id=net_extra,hostfwd=tcp::88-:88,hostfwd=tcp::389-:389
+        -netdev user,id=net_extra,hostfwd=tcp::88-:88,hostfwd=tcp::389-:389,
+        hostfwd=tcp::25-:25,hostfwd=tcp::110-:110,hostfwd=tcp::143-:143
         -device virtio-net-pci,netdev=net_extra
     devices:
       - /dev/kvm
@@ -95,6 +96,9 @@ services:
       - 8006:8006    # Web UI (KVM)
       - 88:88        # Kerberos
       - 389:389      # LDAP
+      - 25:25        # SMTP
+      - 110:110      # POP3
+      - 143:143      # IMAP
     volumes:
       - windows_disk:/storage
       - ./oem:/oem

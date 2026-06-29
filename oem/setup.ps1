@@ -106,42 +106,61 @@ try {
     icacls $sharePath /grant "$netbios\Domain Users:(OI)(CI)(M)" /T | Out-Null
     Log "SMB share 'Compartilhado' created."
 
-    # Install hMailServer
-    Log "Installing hMailServer..."
+    # ─── Email: Windows SMTP Server (built-in) ────────────────
+    Log "Installing Windows SMTP Server feature..."
+    try {
+        Install-WindowsFeature -Name SMTP-Server -IncludeManagementTools | Out-Null
+        Log "Windows SMTP Server installed."
+
+        # Configure relay for internal network
+        $relayPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\SMTP\Relay"
+        if (-not (Test-Path $relayPath)) { New-Item -Path $relayPath -Force | Out-Null }
+        Set-ItemProperty -Path $relayPath -Name "AllowRelay" -Value 1
+        Set-ItemProperty -Path $relayPath -Name "RelayIpList" -Value "172.30.0.0/16"
+        New-NetFirewallRule -DisplayName "SMTP-In" -Direction Inbound -Profile Any -Protocol TCP -LocalPort 25 -Action Allow | Out-Null
+        Log "SMTP relay configured for 172.30.0.0/16."
+    }
+    catch { Log "Windows SMTP Server install error: $_" }
+
+    # ─── Email: hMailServer (optional, local installer) ───────
     $hMailLocal = Get-ChildItem "C:\OEM\hMailServer-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
     $hMailExe = $null
+    $hMailInstalled = $false
     if ($hMailLocal) {
         $hMailExe = $hMailLocal.FullName
-        Log "Found local installer: $hMailExe"
+        Log "Found local hMailServer installer: $hMailExe"
     }
     else {
-        $hMailUrl = "https://download.hmailserver.com/hMailServer-5.7.0-B2730.exe"
-        $hMailExe = "C:\Windows\Temp\hMailServer.exe"
-        Log "Downloading from $hMailUrl ..."
-        try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $hMailUrl -OutFile $hMailExe -UseBasicParsing
-            Log "Download complete."
-        }
-        catch {
-            Log "Download failed: $_"
-        }
+        Log "No local hMailServer installer found in C:\OEM\."
+        Log "hMailServer download from internet is no longer available (site blocks automated access)."
+        Log "Place hMailServer-5.7.0-B2730.exe manually in oem/ directory to enable."
     }
     if ($hMailExe -and (Test-Path $hMailExe)) {
         try {
+            Log "Installing hMailServer..."
             Start-Process -Wait -FilePath $hMailExe -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"C:\Program Files\hMailServer`""
             Log "hMailServer installed successfully."
 
-            # Configure hMailServer basic settings
+            # Stop Windows SMTP to avoid port 25 conflict
+            Stop-Service -Name SMTPSvc -Force -ErrorAction SilentlyContinue
+            Set-Service -Name SMTPSvc -StartupType Disabled -ErrorAction SilentlyContinue
+            Log "Windows SMTP Server stopped (hMailServer will use port 25)."
+
             $adminExe = "C:\Program Files\hMailServer\Bin\hMailServer.Administrator.exe"
             if (Test-Path $adminExe) {
                 Log "hMailServer administrator found at $adminExe"
             }
+            $hMailInstalled = $true
         }
         catch { Log "hMailServer install error: $_" }
     }
+
+    if (-not $hMailInstalled) {
+        Log "Windows SMTP Server is active on port 25 (SMTP only)."
+        Log "For POP3/IMAP support, add hMailServer installer to oem/ and recreate the container."
+    }
     else {
-        Log "hMailServer installer not found. Skipping email setup."
+        Log "hMailServer is active on port 25 (SMTP), 110 (POP3), 143 (IMAP)."
     }
 
     # Add Administrator to the Guacamole access group

@@ -47,14 +47,14 @@ O **laboratorio.local** é uma solução completa de infraestrutura de TI rodand
 
 ### Componentes Principais
 
-| Componente            | Função                                      | Portas        |
-|-----------------------|---------------------------------------------|---------------|
-| **MySQL**             | Banco de dados do Apache Guacamole          | 3306          |
-| **Guacd**             | Proxy de protocolo remoto (RDP, VNC, SSH)   | 4822          |
-| **Guacamole**         | Interface web de acesso remoto              | 8080          |
-| **Windows Server 2022** | Domain Controller, DNS, LDAP, hMailServer | 3389, 389, 88 |
-| **Linux Desktop**     | Desktop Linux para acesso via Guacamole     | 5900 (VNC)    |
-| **Cloudflare Tunnel** | Exposição segura via Cloudflare (opcional)  | —             |
+| Componente            | Função                                      | Portas              |
+|-----------------------|---------------------------------------------|---------------------|
+| **MySQL**             | Banco de dados do Apache Guacamole          | 3306                |
+| **Guacd**             | Proxy de protocolo remoto (RDP, VNC, SSH)   | 4822                |
+| **Guacamole**         | Interface web de acesso remoto              | 8080                |
+| **Windows Server 2022** | Domain Controller, DNS, LDAP, E-mail     | 3389, 389, 88, 25, 110, 143 |
+| **Linux Desktop**     | Desktop Linux para acesso via Guacamole     | 5900 (VNC)          |
+| **Cloudflare Tunnel** | Exposição segura via Cloudflare (opcional)  | —                   |
 
 ---
 
@@ -162,15 +162,15 @@ docker compose logs -f
 
 ### Tempo Estimado
 
-| Etapa                    | Tempo      |
-|--------------------------|------------|
-| Download das imagens     | 2-5 min    |
-| Boot do Windows Server   | 2-3 min    |
-| Instalação do AD (fase 1)| 1-2 min    |
-| Reboot                   | 1 min      |
-| Configuração (fase 2)    | 3-5 min    |
-| Instalação hMailServer   | 1-2 min    |
-| **Total**                | **10-18 min** |
+| Etapa                         | Tempo      |
+|-------------------------------|------------|
+| Download das imagens          | 2-5 min    |
+| Boot do Windows Server        | 2-3 min    |
+| Instalação do AD (fase 1)     | 1-2 min    |
+| Reboot                        | 1 min      |
+| Configuração (fase 2)         | 3-5 min    |
+| Instalação Windows SMTP (+ hMailServer se instalador presente) | 1 min |
+| **Total**                     | **10-14 min** |
 
 ### Acessos
 
@@ -180,6 +180,9 @@ docker compose logs -f
 | Windows Web UI (KVM) | `http://localhost:8006`       | —                                |
 | Guacamole Web        | `http://localhost:8080/guacamole/` | Usuário AD + senha         |
 | Linux Desktop (VNC)  | `http://localhost:5900`       | `SenhaForte@2026`                |
+| SMTP                 | `localhost:25`                | — (relay para 172.30.0.0/16)     |
+| POP3 (hMailServer)   | `localhost:110`               | Conta configurada via RDP        |
+| IMAP (hMailServer)   | `localhost:143`               | Conta configurada via RDP        |
 
 > **Nota**: Substitua `localhost` pelo IP do servidor Docker se estiver acessando remotamente.
 
@@ -327,7 +330,8 @@ windows:
 | AD DS         | Active Directory Domain Services| 389   |
 | DNS           | Servidor DNS                    | 53    |
 | Kerberos      | Autenticação                    | 88    |
-| hMailServer   | Servidor de email               | 25,143|
+| SMTP Server   | Windows SMTP (built-in)         | 25    |
+| hMailServer   | Servidor de email (opcional)    | 25,110,143 |
 | WinRM         | Gerenciamento remoto            | 5985  |
 | SMB           | Compartilhamento de arquivos    | 445   |
 
@@ -338,7 +342,7 @@ O diretório `oem/` contém scripts executados automaticamente dentro do Windows
 ```
 oem/
 ├── install.bat            # Entry point executado pelo dockurr/windows
-├── setup.ps1              # Script principal (AD + grupos + hMailServer)
+├── setup.ps1              # Script principal (AD + grupos + SMTP + hMailServer)
 └── hMailServer-*.exe      # Instalador do hMailServer (opcional)
 ```
 
@@ -408,7 +412,8 @@ O script `oem/setup.ps1` executa em duas fases:
 4. Adiciona `Administrator` ao grupo `G_Guacamole_Acesso`
 5. Habilita WinRM e libera a porta 5985
 6. Cria um SMB share `Compartilhado`
-7. Instala e configura o hMailServer
+7. Instala Windows SMTP Server (built-in, porta 25)
+8. Se `oem/hMailServer-*.exe` existir, instala hMailServer (portas 25, 110, 143) e desliga Windows SMTP
 
 ---
 
@@ -461,37 +466,73 @@ LDAP_NESTED_GROUPS=true
 
 ## Email Corporativo
 
-O **hMailServer** é instalado automaticamente dentro do Windows Server durante o setup.
+O Windows Server oferece duas camadas de servidor de e-mail:
 
-### Configuração Inicial
+### Camada 1 — Windows SMTP Server (built-in, sempre funciona)
 
-Após o setup, acesse o Windows via RDP e configure:
+Instalado automaticamente durante o setup. Não precisa de download — é um recurso nativo do Windows Server.
 
-1. Abra **hMailServer Administrator** (Iniciar → hMailServer)
-2. Conecte como `Administrator` (senha: `SenhaForte@2026`)
-3. Adicione um domínio: **laboratorio.local**
-4. Crie contas de email:
-   - `admin@laboratorio.local`
-   - `contato@laboratorio.local`
-5. Configure DNS (registros MX e SPF) se for usar com domínio público
+- **SMTP na porta 25** — pronto para uso imediato
+- **Relay liberado** para a rede interna `172.30.0.0/16`
+- **Apenas SMTP** — sem POP3/IMAP (apenas envio)
+
+### Camada 2 — hMailServer (opcional, POP3/IMAP)
+
+Para suporte a POP3 e IMAP, coloque o instalador manualmente no repositório:
+
+```bash
+# 1. Baixar de https://www.hmailserver.com/download
+# 2. Salvar como:
+cp ~/Downloads/hMailServer-5.7.0-B2730.exe oem/
+
+# 3. (Opcional) Recriar o container
+docker compose up -d --force-recreate windows
+```
+
+O script de setup detecta o arquivo em `C:\OEM\hMailServer-*.exe` e instala automaticamente. Se o hMailServer for instalado, o Windows SMTP é desligado para evitar conflito na porta 25.
+
+> ⚠️ O download automático via PowerShell foi descontinuado porque o site oficial
+> (www.hmailserver.com) está atrás de Cloudflare e bloqueia requisições automatizadas.
+
+### Configuração via RDP
+
+Após o setup, acesse `localhost:3389` como `Administrator`:
+
+**Windows SMTP (IIS 6.0 Manager):**
+1. Abrir **IIS 6.0 Manager**
+2. Ir em **SMTP Server → Domínios**
+3. Criar domínio: `laboratorio.local`
+4. Propriedades → Acesso → Relay → Permitir de `172.30.0.0/16`
+
+**hMailServer (se instalado):**
+1. Abrir **hMailServer Administrator**
+2. Conectar como `Administrator` (senha: `SenhaForte@2026`)
+3. Adicionar domínio: **laboratorio.local**
+4. Criar contas: `admin@laboratorio.local`, `contato@laboratorio.local`
 
 ### Portas
 
-| Porta | Protocolo | Uso           |
-|-------|-----------|---------------|
-| 25    | SMTP      | Envio         |
-| 143   | IMAP      | Recebimento   |
-| 587   | SMTP TLS  | Envio autenticado (recomendado) |
+| Porta | Protocolo | Uso           | Windows SMTP | hMailServer |
+|-------|-----------|---------------|:---:|:---:|
+| 25    | SMTP      | Envio         | ✅   | ✅   |
+| 110   | POP3      | Recebimento   | ❌   | ✅   |
+| 143   | IMAP      | Recebimento   | ❌   | ✅   |
+| 587   | SMTP TLS  | Envio autenticado | ❌ | ✅ (config. manual) |
 
-### Teste de Envio
+### Diagnóstico
 
-```powershell
-# No Windows Server
-Send-MailMessage -From "admin@laboratorio.local" `
-                 -To "contato@laboratorio.local" `
-                 -Subject "Teste" `
-                 -Body "Email funcionando!" `
-                 -SmtpServer localhost
+```bash
+# Verificar portas
+for p in 25 110 143; do
+  echo > /dev/tcp/localhost/$p 2>/dev/null && echo "Porta $p: OK" || echo "Porta $p: FECHADA"
+done
+
+# Verificar banner SMTP
+timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3'
+
+# Identificar qual servidor está rodando
+timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3' | \
+  grep -i "hMailServer\|windows"
 ```
 
 ---
@@ -662,6 +703,22 @@ docker ps --filter name=lab-guacamole --format "{{.Ports}}"
 # Deve mostrar: 0.0.0.0:8080->8080/tcp
 # Se não aparecer, verifique se o docker-compose.yml tem "ports:"
 ```
+
+### E-mail não funciona (porta 25 fechada)
+
+```bash
+# Verificar se o Windows SMTP Server está instalado
+docker exec lab-windows powershell "Get-WindowsFeature SMTP-Server | ft Name, InstallState"
+
+# Verificar serviço (Windows SMTP = SMTPSvc, hMailServer = hMailServer)
+docker exec lab-windows powershell "Get-Service SMTPSvc, hMailServer -ErrorAction SilentlyContinue"
+
+# Se nenhum dos dois estiver rodando, executar o diagnose
+bash diagnose-setup.sh
+```
+
+**Causa:** O download do hMailServer é bloqueado pelo Cloudflare. O Windows SMTP Server
+é instalado como fallback, mas pode precisar de configuração manual via RDP (IIS 6.0 Manager).
 
 ### OEM não executa (setup.ps1 não roda)
 
