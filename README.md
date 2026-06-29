@@ -195,17 +195,27 @@ services:
     container_name: lab-mysql
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./init/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql
 ```
 
 - Dados persistentes no volume `mysql_data`
 - Health check automático a cada 10s
 - Usuário `guacamole_user` com permissão total no banco `guacamole_db`
+- Schema do Guacamole auto-inicializado via `init/initdb.sql` na primeira execução
+  - Cria todas as tabelas (guacamole_user, guacamole_entity, etc.)
+  - Cria o usuário admin padrão: `guacadmin` / `guacadmin`
 
 ### Guacamole
 
 O Apache Guacamole fornece acesso remoto a desktops via navegador, sem necessidade de cliente RDP/VNC/SSH.
 
 **Autenticação híbrida**: banco de dados MySQL + consulta LDAP ao Active Directory.
+
+> ⚠️ O Guacamole requer que as tabelas do MySQL estejam inicializadas.
+> Isso acontece automaticamente na primeira execução via `init/initdb.sql`.
+> Se o banco já existir sem as tabelas, execute `./init/initdb.sh --apply` manualmente.
+
+**Porta de acesso:** `8080` exposta no host para acesso via navegador.
 
 ```yaml
 guacamole:
@@ -511,6 +521,18 @@ docker compose pull
 docker compose up -d --force-recreate
 ```
 
+### Reinicializar o Banco do Guacamole
+
+Caso o schema do MySQL não tenha sido criado automaticamente:
+
+```bash
+# Gerar e aplicar o schema manualmente
+./init/initdb.sh
+
+# Ou aplicar apenas se o initdb.sql já existir
+./init/initdb.sh --apply
+```
+
 ### Backup
 
 ```bash
@@ -537,7 +559,7 @@ sudo kvm-ok
 
 Caso negativo, habilite a virtualização na BIOS/UEFI do servidor.
 
-### Guacamole não conecta ao LDAP
+### Guacamole não conecta ao LDAP (ERRO 3)
 
 ```bash
 # Verificar se o Windows está acessível
@@ -545,6 +567,38 @@ docker exec lab-guacamole nc -zv windows 389
 
 # Verificar logs do Guacamole
 docker compose logs guacamole
+```
+
+**Causa provável:** O Windows Server ainda está em processo de instalação.
+O setup do AD leva de 10 a 18 minutos. Acompanhe com:
+
+```bash
+docker compose logs -f windows
+```
+
+O LDAP funcionará automaticamente quando o `setup.ps1` concluir a configuração do Active Directory.
+
+### Guacamole retorna "Table doesn't exist" (ERRO 2)
+
+```bash
+# Verificar se as tabelas foram criadas
+docker exec lab-mysql mysql -u root -prootpass guacamole_db -e "SHOW TABLES;"
+
+# Se vazio, aplicar o schema manualmente
+./init/initdb.sh --apply
+```
+
+Isso acontece se o MySQL já existia antes da adição do `init/initdb.sql`.
+Na primeira execução limpa o schema é criado automaticamente.
+
+### Porta 8080 não responde (ERRO 1)
+
+```bash
+# Verificar se o container expõe a porta
+docker ps --filter name=lab-guacamole --format "{{.Ports}}"
+
+# Deve mostrar: 0.0.0.0:8080->8080/tcp
+# Se não aparecer, verifique se o docker-compose.yml tem "ports:"
 ```
 
 ### Senha do AD esquecida
