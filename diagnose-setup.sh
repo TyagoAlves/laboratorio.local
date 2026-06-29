@@ -82,8 +82,44 @@ else
     warn "hMailServer não encontrado ou não instalado."
 fi
 
+# 8. Mailserver container (Postfix + Dovecot)
+info "Verificando mailserver (Postfix + Dovecot LDAP)..."
+if docker ps --format '{{.Names}}' | grep -q lab-mailserver; then
+    pass "Container lab-mailserver está rodando."
+    # Test SMTP banner
+    BANNER=$(timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3' 2>/dev/null | head -5)
+    if echo "$BANNER" | grep -qi "mail\|postfix\|220"; then
+        pass "SMTP banner recebido na porta 25."
+    else
+        warn "SMTP nao responde na porta 25."
+    fi
+    # Test Roundcube webmail
+    RC=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8081/ 2>/dev/null)
+    if [ "$RC" = "200" ]; then
+        pass "Roundcube webmail respondendo em http://localhost:8081/ (HTTP $RC)."
+    else
+        warn "Roundcube webmail retornou HTTP $RC."
+    fi
+else
+    warn "Container lab-mailserver não está rodando."
+fi
+
+# 9. AD mail attribute
+info "Verificando mail attribute no AD..."
+if command -v ldapsearch &>/dev/null; then
+    MAIL_ATTR=$(timeout 3 ldapsearch -H ldap://localhost:389 -x -b "CN=Administrator,CN=Users,DC=laboratorio,DC=local" -s base "(objectClass=user)" mail 2>&1 | grep "^mail:" | head -1)
+    if echo "$MAIL_ATTR" | grep -qi "administrator@"; then
+        pass "mail attribute do Administrator OK: $MAIL_ATTR"
+    else
+        warn "mail attribute do Administrator nao encontrado. Execute setup.ps1 novamente."
+    fi
+else
+    warn "ldapsearch nao instalado. Pule verificacao mail attribute."
+fi
+
 echo ""
 info "=== Diagnóstico concluído ==="
 info "Se o AD não instalou, o setup.ps1 foi executado manualmente acima."
 info "Acompanhe: docker compose logs -f windows"
 info "Acesse a tela: http://localhost:8006/"
+info "Webmail: http://localhost:8081/ (login: administrator@laboratorio.local)"

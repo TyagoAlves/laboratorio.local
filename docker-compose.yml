@@ -70,7 +70,7 @@ services:
     networks:
       - lab-network
 
-  # ─── Windows Server 2022 (Domain Controller + Mail) ────────
+  # ─── Windows Server 2022 (Domain Controller) ───────────────
   windows:
     image: dockurr/windows
     container_name: lab-windows
@@ -107,6 +107,59 @@ services:
     networks:
       - lab-network
 
+  # ─── Mail Server (Postfix + Dovecot + LDAP) ────────────────
+  mailserver:
+    image: docker.io/mailserver/docker-mailserver:latest
+    container_name: lab-mailserver
+    hostname: mail
+    domainname: laboratorio.local
+    environment:
+      ACCOUNT_PROVISIONER: LDAP
+      LDAP_SERVER_HOST: ldap://windows
+      LDAP_SEARCH_BASE: DC=laboratorio,DC=local
+      LDAP_BIND_DN: CN=Administrator,CN=Users,DC=laboratorio,DC=local
+      LDAP_BIND_PW: ${ADMIN_PASSWORD:-SenhaForte@2026}
+      LDAP_START_TLS: no
+      LDAP_QUERY_FILTER_USER: (&(mail=%u)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+      LDAP_QUERY_FILTER_DOMAIN: (&(|(mail=*@%d)(mailAlias=*@%d))(objectClass=user))
+      LDAP_QUERY_FILTER_GROUP: (&(member=%s)(objectClass=group))
+      LDAP_QUERY_FILTER_ALIAS: (&(mailAlias=%s)(objectClass=user))
+      DOVECOT_AUTH_BIND: "yes"
+      DOVECOT_LDAP_SEARCH_FILTER: (&(mail=%u)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+    ports:
+      - "25:25"
+      - "143:143"
+      - "587:587"
+    volumes:
+      - mail_data:/var/mail
+      - mail_state:/var/mail-state
+    cap_add:
+      - NET_ADMIN
+      - SYS_PTRACE
+    restart: unless-stopped
+    stop_grace_period: 120s
+    depends_on:
+      - windows
+    networks:
+      - lab-network
+
+  # ─── Webmail (Roundcube) ───────────────────────────────────
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: lab-roundcube
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: sqlite
+      ROUNDCUBEMAIL_SKIP_DB_INIT: "false"
+    ports:
+      - "8081:80"
+    volumes:
+      - ./roundcube/config/config.inc.php:/var/www/html/config/config.inc.php
+    restart: unless-stopped
+    depends_on:
+      - mailserver
+    networks:
+      - lab-network
+
   # ─── Linux Desktop (optional) ──────────────────────────────
   linux-desktop:
     image: dorowu/ubuntu-desktop-lxde-vnc:latest
@@ -140,3 +193,5 @@ networks:
 volumes:
   mysql_data: {}
   windows_disk: {}
+  mail_data: {}
+  mail_state: {}

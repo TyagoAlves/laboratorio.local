@@ -27,12 +27,14 @@
 7. [Apache Guacamole](#apache-guacamole)
    - [Autenticação LDAP](#autenticação-ldap)
    - [Conexões](#configuração-de-conexões)
-8. [Email Corporativo (hMailServer)](#email-corporativo)
-9. [Rede](#rede)
-10. [Segurança](#segurança)
-11. [Manutenção](#manutenção)
-12. [Troubleshooting](#troubleshooting)
-13. [Roadmap](#roadmap)
+ 8. [Mail Server (LDAP)](#mail-server)
+ 9. [Webmail (Roundcube)](#webmail)
+ 10. [Email Corporativo](#email-corporativo)
+ 11. [Rede](#rede)
+ 12. [Segurança](#segurança)
+ 13. [Manutenção](#manutenção)
+ 14. [Troubleshooting](#troubleshooting)
+ 15. [Roadmap](#roadmap)
 
 ---
 
@@ -43,18 +45,20 @@ O **laboratorio.local** é uma solução completa de infraestrutura de TI rodand
 - **Estudos** — Ambiente controlado para aprender Active Directory, LDAP, Docker e administração Windows.
 - **Homologação** — Teste de políticas de grupo, scripts de login, integração LDAP e aplicações corporativas.
 - **Produtividade** — Acesso remoto a múltiplos desktops via navegador com Apache Guacamole + LDAP.
-- **Email** — Servidor de email funcional com hMailServer para testes e comunicações internas.
+- **Email** — Servidor de email (Postfix/Dovecot) com autenticação LDAP e webmail Roundcube.
 
 ### Componentes Principais
 
-| Componente            | Função                                      | Portas              |
-|-----------------------|---------------------------------------------|---------------------|
-| **MySQL**             | Banco de dados do Apache Guacamole          | 3306                |
-| **Guacd**             | Proxy de protocolo remoto (RDP, VNC, SSH)   | 4822                |
-| **Guacamole**         | Interface web de acesso remoto              | 8080                |
-| **Windows Server 2022** | Domain Controller, DNS, LDAP, E-mail     | 3389, 389, 88, 25, 110, 143 |
-| **Linux Desktop**     | Desktop Linux para acesso via Guacamole     | 5900 (VNC)          |
-| **Cloudflare Tunnel** | Exposição segura via Cloudflare (opcional)  | —                   |
+| Componente            | Função                                      | Portas                |
+|-----------------------|---------------------------------------------|-----------------------|
+| **MySQL**             | Banco de dados do Apache Guacamole          | 3306                  |
+| **Guacd**             | Proxy de protocolo remoto (RDP, VNC, SSH)   | 4822                  |
+| **Guacamole**         | Interface web de acesso remoto              | 8080                  |
+| **Windows Server 2022** | Domain Controller, DNS, LDAP             | 3389, 389, 88         |
+| **Mail Server**       | Postfix + Dovecot com autenticação LDAP     | 25, 143, 587          |
+| **Webmail**           | Roundcube (webmail com IMAP/SMTP)           | 8081                  |
+| **Linux Desktop**     | Desktop Linux para acesso via Guacamole     | 5900 (VNC)            |
+| **Cloudflare Tunnel** | Exposição segura via Cloudflare (opcional)  | —                     |
 
 ---
 
@@ -73,15 +77,25 @@ O **laboratorio.local** é uma solução completa de infraestrutura de TI rodand
 │                        │ LDAP auth                            │
 │  ┌─────────────────────▼──────────────────────────────────┐   │
 │  │              Windows Server 2022                        │   │
-│  │  ┌──────────┐  ┌──────────────┐  ┌──────────────────┐  │   │
-│  │  │ AD DS    │  │    DNS       │  │   hMailServer    │  │   │
-│  │  │ :389     │  │    :53       │  │   :25, :143      │  │   │
-│  │  └──────────┘  └──────────────┘  └──────────────────┘  │   │
+│  │  ┌──────────┐  ┌──────────────┐                        │   │
+│  │  │ AD DS    │  │    DNS       │                        │   │
+│  │  │ :389     │  │    :53       │                        │   │
+│  │  └──────────┘  └──────────────┘                        │   │
 │  │  ┌──────────────────────────────────────────────────┐   │   │
 │  │  │    KVM (dockurr/windows)                         │   │   │
 │  │  │    RDP :3389 | Web UI :8006                      │   │   │
 │  │  └──────────────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────────────┘   │
+│                        │ LDAP auth                            │
+│  ┌─────────────────────▼──────────────────────────────────┐   │
+│  │  Mail Server (Postfix + Dovecot)                       │   │
+│  │  :25 (SMTP)  :143 (IMAP)  :587 (SMTP TLS)             │   │
+│  └─────────────────────┬──────────────────────────────────┘   │
+│                        │ IMAP/SMTP                            │
+│  ┌─────────────────────▼──────────────────────────────────┐   │
+│  │  Roundcube (Webmail)                                   │   │
+│  │  :8081                                                 │   │
+│  └────────────────────────────────────────────────────────┘   │
 │                                                               │
 │  ┌──────────────────────────────────────────────────────────┐ │
 │  │  lab-network (bridge 172.19.0.0/16)                      │ │
@@ -158,6 +172,9 @@ docker compose logs -f
 
 # 6. Configure o Guacamole (grupo + conexões + permissões)
 # Execute os comandos da seção "Configuração Pós-Setup"
+
+# 7. Acesse o webmail
+# http://localhost:8081 (administrator@laboratorio.local / SenhaForte@2026)
 ```
 
 ### Tempo Estimado
@@ -169,8 +186,7 @@ docker compose logs -f
 | Instalação do AD (fase 1)     | 1-2 min    |
 | Reboot                        | 1 min      |
 | Configuração (fase 2)         | 3-5 min    |
-| Instalação Windows SMTP (+ hMailServer se instalador presente) | 1 min |
-| **Total**                     | **10-14 min** |
+| **Total**                     | **10-12 min** |
 
 ### Acessos
 
@@ -179,10 +195,10 @@ docker compose logs -f
 | Windows RDP          | `localhost:3389`              | `Administrator` / `SenhaForte@2026` |
 | Windows Web UI (KVM) | `http://localhost:8006`       | —                                |
 | Guacamole Web        | `http://localhost:8080/guacamole/` | Usuário AD + senha         |
+| Webmail (Roundcube)  | `http://localhost:8081`       | `administrator@laboratorio.local` / `SenhaForte@2026` |
 | Linux Desktop (VNC)  | `http://localhost:5900`       | `SenhaForte@2026`                |
-| SMTP                 | `localhost:25`                | — (relay para 172.30.0.0/16)     |
-| POP3 (hMailServer)   | `localhost:110`               | Conta configurada via RDP        |
-| IMAP (hMailServer)   | `localhost:143`               | Conta configurada via RDP        |
+| SMTP                 | `localhost:25`                | Usuário AD + senha (auth)        |
+| IMAP                 | `localhost:143`               | Usuário AD + senha               |
 
 > **Nota**: Substitua `localhost` pelo IP do servidor Docker se estiver acessando remotamente.
 
@@ -330,8 +346,6 @@ windows:
 | AD DS         | Active Directory Domain Services| 389   |
 | DNS           | Servidor DNS                    | 53    |
 | Kerberos      | Autenticação                    | 88    |
-| SMTP Server   | Windows SMTP (built-in)         | 25    |
-| hMailServer   | Servidor de email (opcional)    | 25,110,143 |
 | WinRM         | Gerenciamento remoto            | 5985  |
 | SMB           | Compartilhamento de arquivos    | 445   |
 
@@ -342,9 +356,52 @@ O diretório `oem/` contém scripts executados automaticamente dentro do Windows
 ```
 oem/
 ├── install.bat            # Entry point executado pelo dockurr/windows
-├── setup.ps1              # Script principal (AD + grupos + SMTP + hMailServer)
+├── setup.ps1              # Script principal (AD + grupos + mail attribute)
 └── hMailServer-*.exe      # Instalador do hMailServer (opcional)
 ```
+
+### Mail Server (Postfix + Dovecot com LDAP)
+
+Servidor de email completo com autenticação integrada ao Active Directory. Substitui o hMailServer com uma solução Docker nativa.
+
+```yaml
+mailserver:
+  image: docker.io/mailserver/docker-mailserver:latest
+  environment:
+    ACCOUNT_PROVISIONER: LDAP
+    LDAP_SERVER_HOST: ldap://windows
+    DOVECOT_AUTH_BIND: "yes"
+```
+
+- **Autenticação LDAP** — Usuários do AD autenticam SMTP e IMAP com login/senha do domínio
+- **Sem contas locais** — `postfix-accounts.cf` é ignorado quando `ACCOUNT_PROVISIONER=LDAP`
+- **Contas desabilitadas** — Usuários com conta desabilitada no AD são rejeitados automaticamente
+- **Requer** que o atributo `mail` esteja populado no AD (feito automaticamente pelo `setup.ps1`)
+- **Formato do email:** `sAMAccountName@laboratorio.local` (ex: `administrator@laboratorio.local`)
+
+**Portas expostas:**
+
+| Porta | Protocolo | Uso                    |
+|-------|-----------|------------------------|
+| 25    | SMTP      | Envio (com autenticação)|
+| 143   | IMAP      | Recebimento            |
+| 587   | SMTP TLS  | Envio autenticado (recomendado) |
+
+### Webmail (Roundcube)
+
+Interface web para acessar emails via navegador. Conecta no mail server via IMAP/SMTP.
+
+```yaml
+roundcube:
+  image: roundcube/roundcubemail:latest
+  ports:
+    - "8081:80"
+```
+
+- Acesse: `http://localhost:8081`
+- Login: `administrator@laboratorio.local` / `SenhaForte@2026`
+- Qualquer usuário do AD com `mail` populado pode fazer login
+- Certificados SSL auto-assinados são aceitos automaticamente
 
 ### Linux Desktop (opcional)
 
@@ -412,8 +469,7 @@ O script `oem/setup.ps1` executa em duas fases:
 4. Adiciona `Administrator` ao grupo `G_Guacamole_Acesso`
 5. Habilita WinRM e libera a porta 5985
 6. Cria um SMB share `Compartilhado`
-7. Instala Windows SMTP Server (built-in, porta 25)
-8. Se `oem/hMailServer-*.exe` existir, instala hMailServer (portas 25, 110, 143) e desliga Windows SMTP
+7. Popula o atributo `mail` no AD para integração com o mail server
 
 ---
 
@@ -466,73 +522,68 @@ LDAP_NESTED_GROUPS=true
 
 ## Email Corporativo
 
-O Windows Server oferece duas camadas de servidor de e-mail:
+O laboratório usa **docker-mailserver** (Postfix + Dovecot) com autenticação integrada ao Active Directory via LDAP.
 
-### Camada 1 — Windows SMTP Server (built-in, sempre funciona)
+### Fluxo de Autenticação
 
-Instalado automaticamente durante o setup. Não precisa de download — é um recurso nativo do Windows Server.
-
-- **SMTP na porta 25** — pronto para uso imediato
-- **Relay liberado** para a rede interna `172.30.0.0/16`
-- **Apenas SMTP** — sem POP3/IMAP (apenas envio)
-
-### Camada 2 — hMailServer (opcional, POP3/IMAP)
-
-Para suporte a POP3 e IMAP, coloque o instalador manualmente no repositório:
-
-```bash
-# 1. Baixar de https://www.hmailserver.com/download
-# 2. Salvar como:
-cp ~/Downloads/hMailServer-5.7.0-B2730.exe oem/
-
-# 3. (Opcional) Recriar o container
-docker compose up -d --force-recreate windows
+```
+Usuário → Cliente de email (Outlook/Thunderbird/Roundcube)
+                ↓
+         SMTP (:25) / IMAP (:143)
+                ↓
+       docker-mailserver consulta AD via LDAP
+                ↓
+         Bind com credenciais do usuário
+                ↓
+       Senha validada contra o AD → Acesso concedido/negado
 ```
 
-O script de setup detecta o arquivo em `C:\OEM\hMailServer-*.exe` e instala automaticamente. Se o hMailServer for instalado, o Windows SMTP é desligado para evitar conflito na porta 25.
+- **Postfix** (SMTP) — faz bind LDAP como `Administrator` para consultar usuários
+- **Dovecot** (IMAP) — `auth_bind = yes`: conecta como o próprio usuário final, validando a senha diretamente contra o AD
+- **Filtro de segurança:** usuários com conta desabilitada no AD (`userAccountControl` bit 1) são rejeitados
 
-> ⚠️ O download automático via PowerShell foi descontinuado porque o site oficial
-> (www.hmailserver.com) está atrás de Cloudflare e bloqueia requisições automatizadas.
+### Criar Contas
 
-### Configuração via RDP
+Não é necessário criar contas manualmente. Todo usuário do AD com o atributo `mail` populado pode enviar e receber emails.
 
-Após o setup, acesse `localhost:3389` como `Administrator`:
+O `setup.ps1` popula automaticamente o `mail` de todos os usuários no formato `sAMAccountName@laboratorio.local`.
 
-**Windows SMTP (IIS 6.0 Manager):**
-1. Abrir **IIS 6.0 Manager**
-2. Ir em **SMTP Server → Domínios**
-3. Criar domínio: `laboratorio.local`
-4. Propriedades → Acesso → Relay → Permitir de `172.30.0.0/16`
+Para criar um novo usuário com email:
 
-**hMailServer (se instalado):**
-1. Abrir **hMailServer Administrator**
-2. Conectar como `Administrator` (senha: `SenhaForte@2026`)
-3. Adicionar domínio: **laboratorio.local**
-4. Criar contas: `admin@laboratorio.local`, `contato@laboratorio.local`
+```powershell
+# No Windows Server (RDP)
+New-ADUser -Name "João Silva" -SamAccountName "joao" -UserPrincipalName "joao@laboratorio.local" -Enabled $true -PasswordNeverExpires $true -AccountPassword (ConvertTo-SecureString "Senha@2026" -AsPlainText -Force)
+Set-ADUser joao -EmailAddress "joao@laboratorio.local"
+Add-ADGroupMember -Identity "G_Guacamole_Acesso" -Members "joao"
+```
 
-### Portas
+### Clientes de Email
 
-| Porta | Protocolo | Uso           | Windows SMTP | hMailServer |
-|-------|-----------|---------------|:---:|:---:|
-| 25    | SMTP      | Envio         | ✅   | ✅   |
-| 110   | POP3      | Recebimento   | ❌   | ✅   |
-| 143   | IMAP      | Recebimento   | ❌   | ✅   |
-| 587   | SMTP TLS  | Envio autenticado | ❌ | ✅ (config. manual) |
+| Cliente       | SMTP         | IMAP         | Webmail              |
+|---------------|--------------|--------------|----------------------|
+| Outlook       | `localhost:25` | `localhost:143` | —                  |
+| Thunderbird   | `localhost:587` TLS | `localhost:143` TLS | — |
+| Roundcube     | —            | —            | `http://localhost:8081` |
 
 ### Diagnóstico
 
 ```bash
+# Verificar mail attribute no AD
+docker exec lab-windows powershell "Get-ADUser Administrator -Properties mail"
+
+# Testar autenticação SMTP contra LDAP
+docker exec lab-mailserver swaks --to administrator@laboratorio.local \
+  --server localhost --auth LOGIN --auth-user administrator@laboratorio.local \
+  --auth-password SenhaForte@2026
+
+# Testar autenticação IMAP
+echo -e 'A001 LOGIN administrator@laboratorio.local SenhaForte@2026\r\n' \
+  | openssl s_client -connect localhost:143 -starttls imap -quiet 2>/dev/null
+
 # Verificar portas
-for p in 25 110 143; do
+for p in 25 143 587; do
   echo > /dev/tcp/localhost/$p 2>/dev/null && echo "Porta $p: OK" || echo "Porta $p: FECHADA"
 done
-
-# Verificar banner SMTP
-timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3'
-
-# Identificar qual servidor está rodando
-timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3' | \
-  grep -i "hMailServer\|windows"
 ```
 
 ---
@@ -549,14 +600,16 @@ timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3;
 
 ### Nomes DNS
 
-| Nome               | IP Interno     | Serviço           |
-|--------------------|----------------|-------------------|
-| `windows`          | 172.19.0.x     | Windows Server    |
-| `mysql`            | 172.19.0.x     | MySQL             |
-| `guacd`            | 172.19.0.x     | Guacd             |
-| `guacamole`        | 172.19.0.x     | Apache Guacamole  |
-| `linux-desktop`    | 172.19.0.x     | Linux Desktop     |
-| `host.lan`         | 172.30.0.1     | Samba gateway     |
+| Nome               | IP Interno     | Serviço               |
+|--------------------|----------------|-----------------------|
+| `windows`          | 172.19.0.x     | Windows Server        |
+| `mysql`            | 172.19.0.x     | MySQL                 |
+| `guacd`            | 172.19.0.x     | Guacd                 |
+| `guacamole`        | 172.19.0.x     | Apache Guacamole      |
+| `mailserver`       | 172.19.0.x     | Postfix + Dovecot     |
+| `roundcube`        | 172.19.0.x     | Roundcube Webmail     |
+| `linux-desktop`    | 172.19.0.x     | Linux Desktop         |
+| `host.lan`         | 172.30.0.1     | Samba gateway         |
 
 ---
 
@@ -567,7 +620,7 @@ timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3;
 1. **Altere as senhas padrão** — modifique `ADMIN_PASSWORD` no `.env` antes de expor o ambiente
 2. **Firewall** — nunca exponha portas administrativas (3389, 8006, 5985) à internet
 3. **Cloudflare Tunnel** — prefira o túnel para acesso externo ao Guacamole
-4. **TLS** — configure certificados no Guacamole e hMailServer para ambientes produtivos
+4. **TLS** — configure certificados no Guacamole e no mail server para ambientes produtivos
 5. **Backup** — faça backup regular dos volumes Docker: `mysql_data` e `windows_disk`
 
 ### Variáveis Sensíveis
@@ -704,21 +757,27 @@ docker ps --filter name=lab-guacamole --format "{{.Ports}}"
 # Se não aparecer, verifique se o docker-compose.yml tem "ports:"
 ```
 
-### E-mail não funciona (porta 25 fechada)
+### E-mail não funciona
 
 ```bash
-# Verificar se o Windows SMTP Server está instalado
-docker exec lab-windows powershell "Get-WindowsFeature SMTP-Server | ft Name, InstallState"
+# Verificar status do mailserver
+docker ps --filter name=lab-mailserver --format "{{.Status}}"
 
-# Verificar serviço (Windows SMTP = SMTPSvc, hMailServer = hMailServer)
-docker exec lab-windows powershell "Get-Service SMTPSvc, hMailServer -ErrorAction SilentlyContinue"
+# Verificar logs
+docker compose logs mailserver
 
-# Se nenhum dos dois estiver rodando, executar o diagnose
+# Verificar se o mail attribute está populado no AD
+docker exec lab-windows powershell "Get-ADUser Administrator -Properties mail"
+
+# Verificar banner SMTP
+timeout 5 bash -c 'exec 3<>/dev/tcp/localhost/25; sleep 1; echo "EHLO test" >&3; cat <&3'
+
+# Executar diagnóstico completo
 bash diagnose-setup.sh
 ```
 
-**Causa:** O download do hMailServer é bloqueado pelo Cloudflare. O Windows SMTP Server
-é instalado como fallback, mas pode precisar de configuração manual via RDP (IIS 6.0 Manager).
+**Causa comum:** O `mail attribute` não foi populado no AD. Execute o `setup.ps1` novamente
+ou população manual com: `Set-ADUser usuario -EmailAddress "usuario@laboratorio.local"`.
 
 ### OEM não executa (setup.ps1 não roda)
 
@@ -766,8 +825,7 @@ docker compose up -d --force-recreate windows
 ## Roadmap
 
 - [x] **Auto-configuração Guacamole** — SQL + API para criar grupo, conexões e permissões automaticamente
-- [ ] **Auto-configuração hMailServer** — Script PowerShell para criar domínio e contas automaticamente
-- [ ] **TLS/SSL** — Certificados auto-assinados para LDAPS, HTTPS e SMTPS
+- [x] **Auto-configuração Email (LDAP)** — Postfix/Dovecot autenticam contra AD; Roundcube webmail
 - [ ] **Backup automático** — Script de backup dos volumes Docker para armazenamento externo
 - [ ] **Monitoramento** — Integração com Prometheus + Grafana
 - [ ] **Ansible** — Playbook para deploy automatizado em servidores bare-metal

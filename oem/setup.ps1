@@ -106,6 +106,19 @@ try {
     icacls $sharePath /grant "$netbios\Domain Users:(OI)(CI)(M)" /T | Out-Null
     Log "SMB share 'Compartilhado' created."
 
+    # ─── Populate mail attribute for LDAP email integration ───
+    Log "Populating mail attribute for all AD users..."
+    try {
+        Set-ADUser Administrator -EmailAddress "administrator@laboratorio.local"
+        $users = Get-ADUser -Filter "mail -notlike '*'" -Properties mail
+        foreach ($u in $users) {
+            Set-ADUser $u.sAMAccountName -EmailAddress "$($u.sAMAccountName)@laboratorio.local"
+            Log "  Set mail for $($u.sAMAccountName)"
+        }
+        Log "Mail attribute populated."
+    }
+    catch { Log "Could not populate mail attribute: $_" }
+
     # ─── Email: Windows SMTP Server (built-in) ────────────────
     Log "Installing Windows SMTP Server feature..."
     try {
