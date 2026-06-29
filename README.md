@@ -153,8 +153,11 @@ docker compose up -d
 # 4. Acompanhe os logs
 docker compose logs -f
 
-# 5. Aguarde o setup completar (5-15 minutos)
+# 5. Aguarde o setup completar (10-18 minutos)
 # O Windows Server irá reiniciar automaticamente durante a instalação do AD
+
+# 6. Configure o Guacamole (grupo + conexões + permissões)
+# Execute os comandos da seção "Configuração Pós-Setup"
 ```
 
 ### Tempo Estimado
@@ -232,15 +235,71 @@ guacamole:
 
 #### Configuração Pós-Setup
 
-Após o ambiente estar no ar, acesse o Guacamole como `guacadmin` (senha padrão: `guacadmin` — **altere imediatamente**) e configure:
+Após o setup do Windows completar (10-18 min), execute os comandos abaixo para criar o grupo de acesso e as conexões no Guacamole automaticamente.
 
-1. **Conexões** que serão acessíveis via LDAP:
-   - WinLab-Client (RDP → `windows:3389`)
-   - Linux-Desktop (VNC → `linux-desktop:5900`)
+**Passo 1 — Registrar o grupo no MySQL:**
 
-2. **Permissões** — Associe cada conexão ao grupo `G_Guacamole_Acesso`:
-   - Acesse **Settings → Users, Groups & Permissions**
-   - Em **Connection Groups**, atribua permissão **READ** ao grupo
+```bash
+docker exec lab-mysql mysql -u root -prootpass guacamole_db <<-EOSQL
+INSERT INTO guacamole_entity (name, type) VALUES ('G_Guacamole_Acesso', 'USER_GROUP');
+INSERT INTO guacamole_user_group (entity_id, disabled)
+  SELECT entity_id, 0 FROM guacamole_entity WHERE name = 'G_Guacamole_Acesso' AND type = 'USER_GROUP';
+EOSQL
+```
+
+**Passo 2 — Criar conexões via API:**
+
+```bash
+# Obter token de autenticação
+GUAC_TOKEN=$(curl -s -X POST http://localhost:8080/guacamole/api/tokens \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=guacadmin&password=guacadmin" | python3 -c "import json,sys; print(json.load(sys.stdin)['authToken'])")
+
+# Criar conexão RDP para o Windows Server
+curl -s -X POST "http://localhost:8080/guacamole/api/session/data/mysql/connections?token=$GUAC_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parentIdentifier":"ROOT",
+    "name":"Windows Server 2022",
+    "protocol":"rdp",
+    "parameters":{
+      "hostname":"windows","port":"3389",
+      "username":"Administrator","password":"SenhaForte@2026",
+      "domain":"laboratorio","ignore-cert":"true","security":"any",
+      "resize-method":"display-update","color-depth":"32",
+      "enable-wallpaper":"false","enable-theming":"false",
+      "enable-font-smoothing":"true","disable-audio":"true"
+    }
+  }'
+
+# Criar conexão SSH para o Linux Desktop
+curl -s -X POST "http://localhost:8080/guacamole/api/session/data/mysql/connections?token=$GUAC_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "parentIdentifier":"ROOT",
+    "name":"Linux Desktop",
+    "protocol":"ssh",
+    "parameters":{
+      "hostname":"linux-desktop","port":"22",
+      "username":"ubuntu","password":"ubuntu"
+    }
+  }'
+```
+
+**Passo 3 — Conceder permissão READ ao grupo:**
+
+```bash
+docker exec lab-mysql mysql -u root -prootpass guacamole_db <<-EOSQL
+INSERT INTO guacamole_connection_permission (entity_id, connection_id, permission)
+  SELECT e.entity_id, c.connection_id, 'READ'
+  FROM guacamole_entity e, guacamole_connection c
+  WHERE e.name = 'G_Guacamole_Acesso' AND e.type = 'USER_GROUP';
+EOSQL
+```
+
+Agora acesse `http://localhost:8080/guacamole/` e faça login como **Administrator** (senha: `SenhaForte@2026`). As conexões aparecerão automaticamente.
+
+> Alternativamente, configure manualmente via GUI com `guacadmin` seguindo as instruções abaixo.
 
 ### Windows Server
 
@@ -278,6 +337,7 @@ O diretório `oem/` contém scripts executados automaticamente dentro do Windows
 
 ```
 oem/
+├── install.bat            # Entry point executado pelo dockurr/windows
 ├── setup.ps1              # Script principal (AD + grupos + hMailServer)
 └── hMailServer-*.exe      # Instalador do hMailServer (opcional)
 ```
@@ -334,19 +394,21 @@ Add-ADGroupMember -Identity "G_Guacamole_Acesso" -Members "usuario"
 O script `oem/setup.ps1` executa em duas fases:
 
 **Fase 1 — Primeiro boot:**
-1. Instala a feature AD-Domain-Services
-2. Cria a floresta `laboratorio.local`
-3. Configura DNS integrado
-4. Agenda a Fase 2 via RunOnce
-5. Reinicia o servidor
+1. Desabilita Ctrl+Alt+Del e configura auto-logon do Administrator
+2. Instala a feature AD-Domain-Services
+3. Cria a floresta `laboratorio.local`
+4. Configura DNS integrado
+5. Agenda a Fase 2 via RunOnce
+6. Reinicia o servidor
 
 **Fase 2 — Após o reboot:**
 1. Verifica se o domínio está operacional
 2. Cria as OUs: Usuarios, Grupos, Servidores
 3. Cria o grupo `G_Guacamole_Acesso`
-4. Habilita WinRM e libera a porta 5985
-5. Cria um SMB share `Compartilhado`
-6. Instala e configura o hMailServer
+4. Adiciona `Administrator` ao grupo `G_Guacamole_Acesso`
+5. Habilita WinRM e libera a porta 5985
+6. Cria um SMB share `Compartilhado`
+7. Instala e configura o hMailServer
 
 ---
 
@@ -601,6 +663,22 @@ docker ps --filter name=lab-guacamole --format "{{.Ports}}"
 # Se não aparecer, verifique se o docker-compose.yml tem "ports:"
 ```
 
+### OEM não executa (setup.ps1 não roda)
+
+```bash
+# Verificar se install.bat existe dentro do Windows
+docker exec lab-windows cmd /c "dir C:\OEM\"
+
+# Se vazio, o volume ./oem não está montado corretamente
+docker inspect lab-windows | jq '.[].Mounts'
+
+# Executar o diagnóstico completo
+bash diagnose-setup.sh
+```
+
+**Causa:** O dockurr/windows só executa OEM se existir `install.bat` em `C:\OEM\`.
+Sem o `install.bat`, o setup.ps1 nunca é chamado e o AD não é instalado.
+
 ### Senha do AD esquecida
 
 Faça o bind com a senha de recuperação do modo DSRM:
@@ -630,6 +708,7 @@ docker compose up -d --force-recreate windows
 
 ## Roadmap
 
+- [x] **Auto-configuração Guacamole** — SQL + API para criar grupo, conexões e permissões automaticamente
 - [ ] **Auto-configuração hMailServer** — Script PowerShell para criar domínio e contas automaticamente
 - [ ] **TLS/SSL** — Certificados auto-assinados para LDAPS, HTTPS e SMTPS
 - [ ] **Backup automático** — Script de backup dos volumes Docker para armazenamento externo

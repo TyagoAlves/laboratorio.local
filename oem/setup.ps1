@@ -8,6 +8,23 @@ function Log($msg) {
     Write-Host $msg
 }
 
+# ─── Disable Ctrl+Alt+Del and enable Auto-Logon ─────────────
+Log "Configuring auto-logon and disabling Ctrl+Alt+Del..."
+try {
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" `
+        /v DisableCAD /t REG_DWORD /d 1 /f | Out-Null
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" `
+        /v AutoAdminLogon /t REG_SZ /d "1" /f | Out-Null
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" `
+        /v DefaultUserName /t REG_SZ /d "Administrator" /f | Out-Null
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" `
+        /v DefaultPassword /t REG_SZ /d "$safePass" /f | Out-Null
+    reg add "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" `
+        /v AutoLogonCount /t REG_DWORD /d 5 /f | Out-Null
+    Log "Auto-logon configured."
+}
+catch { Log "Warning: could not set auto-logon: $_" }
+
 # ─── PHASE 1: Install AD DS ─────────────────────────────────
 $adService = Get-Service -Name NTDS -ErrorAction SilentlyContinue
 if (-not $adService) {
@@ -126,6 +143,14 @@ try {
     else {
         Log "hMailServer installer not found. Skipping email setup."
     }
+
+    # Add Administrator to the Guacamole access group
+    try {
+        Add-ADGroupMember -Identity "CN=G_Guacamole_Acesso,OU=Grupos,DC=laboratorio,DC=local" `
+            -Members "CN=Administrator,CN=Users,DC=laboratorio,DC=local"
+        Log "Administrator added to G_Guacamole_Acesso."
+    }
+    catch { Log "Could not add Administrator to G_Guacamole_Acesso: $_" }
 
     Log "=== SETUP COMPLETE ==="
     Log "RDP access: Administrator / $safePass"
