@@ -1,0 +1,135 @@
+services:
+
+  # ─── Database ───────────────────────────────────────────────
+  mysql:
+    image: mysql:8
+    container_name: lab-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: guacamole_db
+      MYSQL_USER: guacamole_user
+      MYSQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-guacamole_pass}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - lab-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ─── Guacamole Proxy Daemon ─────────────────────────────────
+  guacd:
+    image: guacamole/guacd
+    container_name: lab-guacd
+    restart: unless-stopped
+    networks:
+      - lab-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 4822"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ─── Guacamole Web Application ──────────────────────────────
+  guacamole:
+    image: guacamole/guacamole
+    container_name: lab-guacamole
+    depends_on:
+      guacd:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    environment:
+      # Database
+      GUACD_HOSTNAME: guacd
+      MYSQL_HOSTNAME: mysql
+      MYSQL_DATABASE: guacamole_db
+      MYSQL_USER: guacamole_user
+      MYSQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-guacamole_pass}
+      # LDAP Authentication
+      LDAP_HOSTNAME: windows
+      LDAP_PORT: "389"
+      LDAP_ENCRYPTION_METHOD: none
+      LDAP_USER_BASE_DN: DC=laboratorio,DC=local
+      LDAP_USERNAME_ATTRIBUTE: sAMAccountName
+      LDAP_SEARCH_BIND_DN: CN=Administrator,CN=Users,DC=laboratorio,DC=local
+      LDAP_SEARCH_BIND_PASSWORD: ${ADMIN_PASSWORD:-SenhaForte@2026}
+      LDAP_GROUP_BASE_DN: DC=laboratorio,DC=local
+      LDAP_GROUP_NAME_ATTRIBUTE: cn
+      LDAP_MEMBER_ATTRIBUTE: member
+      LDAP_GROUP_SEARCH_FILTER: "(objectClass=group)"
+      LDAP_NESTED_GROUPS: "true"
+    restart: unless-stopped
+    networks:
+      - lab-network
+
+  # ─── Windows Server 2022 (Domain Controller + Mail) ────────
+  windows:
+    image: dockurr/windows
+    container_name: lab-windows
+    environment:
+      RAM_SIZE: ${RAM_SIZE:-3G}
+      CPU_CORES: ${CPU_CORES:-2}
+      DISK_SIZE: ${DISK_SIZE:-60G}
+      VERSION: win2022
+      USERNAME: Administrator
+      PASSWORD: ${ADMIN_PASSWORD:-SenhaForte@2026}
+      ARGUMENTS: >-
+        -netdev user,id=net_extra,hostfwd=tcp::88-:88,hostfwd=tcp::389-:389
+        -device virtio-net-pci,netdev=net_extra
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    ports:
+      - 3389:3389    # RDP
+      - 8006:8006    # Web UI (KVM)
+      - 88:88        # Kerberos
+      - 389:389      # LDAP
+    volumes:
+      - windows_disk:/storage
+      - ./oem:/oem
+    stop_grace_period: 120s
+    restart: unless-stopped
+    networks:
+      - lab-network
+
+  # ─── Linux Desktop (optional) ──────────────────────────────
+  linux-desktop:
+    image: dorowu/ubuntu-desktop-lxde-vnc:latest
+    container_name: lab-linux
+    environment:
+      VNC_PASSWORD: ${VNC_PASSWORD:-SenhaForte@2026}
+      RESOLUTION: 1280x720
+    ports:
+      - "5900"
+    restart: unless-stopped
+    networks:
+      - lab-network
+
+  # ─── Cloudflare Tunnel (optional) ──────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared
+    container_name: lab-cloudflared
+    command: tunnel --url http://guacamole:8080/guacamole/
+    restart: unless-stopped
+    networks:
+      - lab-network
+    depends_on:
+      - guacamole
+    profiles:
+      - tunnel
+
+networks:
+  lab-network:
+    driver: bridge
+
+volumes:
+  mysql_data: {}
+  windows_disk: {}
