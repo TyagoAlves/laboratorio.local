@@ -371,6 +371,7 @@ mailserver:
     ACCOUNT_PROVISIONER: LDAP
     LDAP_SERVER_HOST: ldap://windows
     DOVECOT_AUTH_BIND: "yes"
+    DOVECOT_USER_FILTER: (&(mail=%u)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
 ```
 
 - **Autenticação LDAP** — Usuários do AD autenticam SMTP e IMAP com login/senha do domínio
@@ -394,14 +395,15 @@ Interface web para acessar emails via navegador. Conecta no mail server via IMAP
 ```yaml
 roundcube:
   image: roundcube/roundcubemail:latest
-  ports:
-    - "8081:80"
+  environment:
+    ROUNDCUBEMAIL_USERNAME_DOMAIN: laboratorio.local
 ```
 
 - Acesse: `http://localhost:8081`
-- Login: `administrator@laboratorio.local` / `SenhaForte@2026`
+- Login: `administrator` ou `administrator@laboratorio.local` / `SenhaForte@2026`
 - Qualquer usuário do AD com `mail` populado pode fazer login
 - Certificados SSL auto-assinados são aceitos automaticamente
+- O env `ROUNDCUBEMAIL_USERNAME_DOMAIN` permite login sem `@laboratorio.local`
 
 ### Linux Desktop (opcional)
 
@@ -565,15 +567,34 @@ Add-ADGroupMember -Identity "G_Guacamole_Acesso" -Members "joao"
 | Thunderbird   | `localhost:587` TLS | `localhost:143` TLS | — |
 | Roundcube     | —            | —            | `http://localhost:8081` |
 
+### Configuração do Dovecot LDAP
+
+O mapeamento de env vars para o arquivo `/etc/dovecot/dovecot-ldap.conf.ext` segue a
+convenção do DMS v15: prefixo `DOVECOT_` + nome da chave em lowercase.
+
+| Env Var                    | Chave no config       | Valor                          |
+|----------------------------|-----------------------|--------------------------------|
+| `DOVECOT_USER_FILTER`       | `user_filter`         | Filtro LDAP para localizar usuário |
+| `DOVECOT_PASS_ATTRS`        | `pass_attrs`          | `uid=user,userPassword=password` |
+| `DOVECOT_USER_ATTRS`        | `user_attrs`          | `=uid=5000,=gid=5000,=home=...` |
+| `DOVECOT_AUTH_BIND`         | `auth_bind`           | `yes`                          |
+
+> ⚠️ `DOVECOT_LDAP_SEARCH_FILTER` **não funciona** — o script `ldap.sh` converte para
+> `ldap_search_filter`, que não é uma chave válida. Use `DOVECOT_USER_FILTER`.
+
 ### Diagnóstico
 
 ```bash
 # Verificar mail attribute no AD
 docker exec lab-windows powershell "Get-ADUser Administrator -Properties mail"
 
-# Testar autenticação SMTP contra LDAP
+# Verificar configuração do Dovecot LDAP
+docker exec lab-mailserver cat /etc/dovecot/dovecot-ldap.conf.ext | grep -E "user_filter|pass_filter|pass_attrs|user_attrs|auth_bind"
+
+# Testar autenticação SMTP (porta 587 com TLS)
 docker exec lab-mailserver swaks --to administrator@laboratorio.local \
-  --server localhost --auth LOGIN --auth-user administrator@laboratorio.local \
+  --server localhost --port 587 --tls \
+  --auth LOGIN --auth-user administrator@laboratorio.local \
   --auth-password SenhaForte@2026
 
 # Testar autenticação IMAP
@@ -755,6 +776,33 @@ docker ps --filter name=lab-guacamole --format "{{.Ports}}"
 
 # Deve mostrar: 0.0.0.0:8080->8080/tcp
 # Se não aparecer, verifique se o docker-compose.yml tem "ports:"
+```
+
+### IMAP retorna "User is missing UID"
+
+```bash
+# Verificar logs do Dovecot
+docker compose logs mailserver | grep -i "missing UID\|user_filter\|pass_filter"
+
+# Causa: DOVECOT_USER_ATTRS não definido ou sem uid/gid
+# Solução: adicionar no docker-compose.yml mailserver:
+#   DOVECOT_USER_ATTRS: =uid=5000,=gid=5000,=home=/var/mail/%d/%n/home/,=mail=maildir:/var/mail/%d/%n/
+```
+
+O Dovecot precisa de UID/GID estáticos (5000:5000) para rodar o processo do usuário.
+Sem `user_attrs`, o login IMAP funciona mas o acesso à caixa postal falha.
+
+### IMAP retorna "Temporary auth failure"
+
+```bash
+# Verificar configuração do Dovecot LDAP
+docker exec lab-mailserver cat /etc/dovecot/dovecot-ldap.conf.ext | grep -i "filter"
+
+# Causa: DOVECOT_LDAP_SEARCH_FILTER não é um env var válido no DMS v15
+# O nome correto é DOVECOT_USER_FILTER
+# O script ldap.sh mapeia DOVECOT_* → chaves lowercase no config
+# DOVECOT_LDAP_SEARCH_FILTER → ldap_search_filter (chave inválida, ignorada)
+# DOVECOT_USER_FILTER       → user_filter (correto)
 ```
 
 ### E-mail não funciona

@@ -125,7 +125,9 @@ services:
       LDAP_QUERY_FILTER_GROUP: (&(member=%s)(objectClass=group))
       LDAP_QUERY_FILTER_ALIAS: (&(mailAlias=%s)(objectClass=user))
       DOVECOT_AUTH_BIND: "yes"
-      DOVECOT_LDAP_SEARCH_FILTER: (&(mail=%u)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+      DOVECOT_USER_FILTER: (&(mail=%u)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))
+      DOVECOT_PASS_ATTRS: uid=user,userPassword=password
+      DOVECOT_USER_ATTRS: =uid=5000,=gid=5000,=home=/var/mail/%d/%n/home/,=mail=maildir:/var/mail/%d/%n/
     ports:
       - "25:25"
       - "143:143"
@@ -150,9 +152,11 @@ services:
     environment:
       ROUNDCUBEMAIL_DB_TYPE: sqlite
       ROUNDCUBEMAIL_SKIP_DB_INIT: "false"
+      ROUNDCUBEMAIL_USERNAME_DOMAIN: laboratorio.local
     ports:
       - "8081:80"
     volumes:
+      - ./roundcube/db:/var/roundcube/db
       - ./roundcube/config/config.inc.php:/var/www/html/config/config.inc.php
     restart: unless-stopped
     depends_on:
