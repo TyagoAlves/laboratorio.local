@@ -15,14 +15,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          scan-ref: |
-            mysql:8
-            guacamole/guacd
-            guacamole/guacamole
-            dockurr/windows
-            mailserver/docker-mailserver:latest
-            roundcube/roundcubemail:latest
-            dorowu/ubuntu-desktop-lxde-vnc:latest
+          scan-ref: mysql:8 guacamole/guacd guacamole/guacamole dockurr/windows mailserver/docker-mailserver:latest roundcube/roundcubemail:latest dorowu/ubuntu-desktop-lxde-vnc:latest
           format: table
           exit-code: 1
           severity: HIGH,CRITICAL
