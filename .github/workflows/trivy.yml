@@ -22,7 +22,7 @@ jobs:
           - roundcube/roundcubemail:latest
           - dorowu/ubuntu-desktop-lxde-vnc:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@v0.36.0
         with:
