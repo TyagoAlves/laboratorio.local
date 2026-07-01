@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>laboratorio.local — Infraestrutura de TI em Docker</title>
+  <meta name="description" content="Active Directory, Apache Guacamole, email corporativo e acesso remoto — tudo rodando em contêineres Docker." />
+  <meta property="og:title" content="laboratorio.local — Infraestrutura de TI em Docker" />
+  <meta property="og:description" content="Active Directory, Guacamole, email e acesso remoto em contêineres Docker." />
+  <meta property="og:url" content="https://tyagoalves.github.io/laboratorio.local/" />
+  <meta name="theme-color" content="#0a0e1a" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: { gray: { 950: '#060a14' } },
+        },
+      },
+    };
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #060a14; color: #f1f5f9; font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .gradient-text { background: linear-gradient(135deg, #f97316, #a855f7, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-orange { background: linear-gradient(135deg, #f97316, #fb923c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-purple { background: linear-gradient(135deg, #a855f7, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .gradient-cyan { background: linear-gradient(135deg, #06b6d4, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.06); }
+    .glass-card { background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.05); transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .glass-card:hover { border-color: rgba(249, 115, 22, 0.3); transform: translateY(-4px); box-shadow: 0 20px 60px rgba(249,115,22,0.08); }
+    .hero-glow { position: absolute; width: 700px; height: 700px; border-radius: 50%; pointer-events: none; filter: blur(80px); opacity: 0.15; }
+    .hero-glow-1 { background: radial-gradient(circle, #f97316, transparent 70%); top: -300px; left: -200px; }
+    .hero-glow-2 { background: radial-gradient(circle, #a855f7, transparent 70%); bottom: -200px; right: -200px; }
+    .hero-glow-3 { background: radial-gradient(circle, #06b6d4, transparent 70%); top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    .code-block { background: rgba(6, 10, 20, 0.8); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 1.5rem; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; line-height: 1.8; overflow-x: auto; }
+    .code-block .cmd::before { content: "$ "; color: #22d3ee; user-select: none; -webkit-user-select: none; }
+    .code-block .cmd { color: #e2e8f0; }
+    .code-block .output { color: #22c55e; display: block; margin-top: 2px; }
+    .grid-pattern { background-image: radial-gradient(rgba(249,115,22,0.03) 1px, transparent 1px); background-size: 40px 40px; }
+    .hero-btn { position: relative; overflow: hidden; transition: all 0.3s ease; }
+    .hero-btn::after { content: ''; position: absolute; inset: -2px; border-radius: inherit; background: linear-gradient(135deg, #f97316, #a855f7, #06b6d4); z-index: -1; opacity: 0; transition: opacity 0.4s; }
+    .hero-btn:hover::after { opacity: 1; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; background: rgba(249,115,22,0.1); border: 1px solid rgba(249,115,22,0.2); color: #fb923c; }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: #fb923c; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .feature-icon { width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #060a14; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    @keyframes fadeInUp { to { opacity: 1; transform: translateY(0); } }
+    .animate-in { opacity: 0; transform: translateY(20px); animation: fadeInUp 0.6s ease forwards; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <nav class="fixed top-0 left-0 right-0 z-50 glass border-b border-white/5">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <a href="#" class="flex items-center gap-3 group">
+          <span class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 via-purple-500 to-cyan-500 flex items-center justify-center text-white font-bold text-sm group-hover:scale-105 transition">LL</span>
+          <span class="font-bold text-xl">laboratorio<span class="text-orange-400">.local</span></span>
+        </a>
+        <div class="hidden md:flex items-center gap-8 text-sm">
+          <a href="#componentes" class="text-gray-400 hover:text-white transition font-medium">Componentes</a>
+          <a href="#deploy" class="text-gray-400 hover:text-white transition font-medium">Deploy</a>
+          <a href="#quickstart" class="text-gray-400 hover:text-white transition font-medium">Quick Start</a>
+          <a href="#acessos" class="text-gray-400 hover:text-white transition font-medium">Acessos</a>
+          <a href="https://github.com/TyagoAlves/laboratorio.local" target="_blank" rel="noopener" class="text-gray-400 hover:text-white transition">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          </a>
+          <a href="https://github.com/TyagoAlves/laboratorio.local.git" target="_blank" rel="noopener" class="bg-gradient-to-r from-orange-500 via-purple-500 to-cyan-500 text-white px-5 py-2 rounded-xl font-semibold text-sm hover:shadow-lg hover:shadow-orange-500/20 transition-all duration-300 inline-flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+            Deploy
+          </a>
+        </div>
+        <button class="md:hidden text-gray-400 hover:text-white p-2" onclick="document.getElementById('mobileMenu').classList.toggle('hidden')">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </div>
+    </div>
+    <div id="mobileMenu" class="hidden md:hidden border-t border-white/5 bg-[#060a14]">
+      <div class="px-4 py-4 space-y-3">
+        <a href="#componentes" class="block text-gray-400 hover:text-white py-2">Componentes</a>
+        <a href="#deploy" class="block text-gray-400 hover:text-white py-2">Deploy</a>
+        <a href="#quickstart" class="block text-gray-400 hover:text-white py-2">Quick Start</a>
+        <a href="#acessos" class="block text-gray-400 hover:text-white py-2">Acessos</a>
+        <a href="https://github.com/TyagoAlves/laboratorio.local" class="block text-gray-400 hover:text-white py-2">GitHub</a>
+        <a href="https://github.com/TyagoAlves/laboratorio.local.git" class="block bg-gradient-to-r from-orange-500 to-cyan-500 text-white px-4 py-2 rounded-xl font-semibold text-center">Deploy</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="relative min-h-screen flex items-center justify-center overflow-hidden pt-20 grid-pattern">
+    <div class="hero-glow hero-glow-1"></div>
+    <div class="hero-glow hero-glow-2"></div>
+    <div class="hero-glow hero-glow-3"></div>
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+      <div class="animate-in" style="animation-delay: 0.1s">
+        <div class="badge mb-8">
+          <span class="dot"></span>
+          Open Source &bull; Docker &bull; Zero Custos
+        </div>
+      </div>
+      <h1 class="animate-in text-5xl sm:text-6xl md:text-8xl font-black leading-[1.05] mb-8" style="animation-delay: 0.2s">
+        Sua infraestrutura<br>
+        <span class="gradient-text">em contêineres.</span>
+      </h1>
+      <p class="animate-in text-lg sm:text-xl text-gray-400 max-w-2xl mx-auto mb-12 leading-relaxed" style="animation-delay: 0.3s">
+        Active Directory, Apache Guacamole, servidor de email e acesso remoto — tudo rodando em Docker.
+        <strong class="text-gray-200">Pronto em minutos.</strong>
+      </p>
+
+      <div class="animate-in flex flex-wrap justify-center gap-4" style="animation-delay: 0.4s">
+        <a href="https://github.com/TyagoAlves/laboratorio.local.git" target="_blank" class="group relative hero-btn bg-gradient-to-r from-orange-500 via-purple-500 to-cyan-500 text-white font-bold px-10 py-5 rounded-2xl text-lg transition-all duration-300 shadow-xl shadow-orange-500/20 hover:shadow-orange-500/40 flex items-center gap-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          <span>Deploy no Seu Servidor</span>
+          <span class="px-3 py-0.5 rounded-full bg-white/10 text-sm">Grátis</span>
+        </a>
+        <a href="https://github.com/TyagoAlves/laboratorio.local" target="_blank" class="glass-card text-gray-300 font-semibold px-8 py-5 rounded-2xl text-lg flex items-center gap-3">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Código Fonte
+        </a>
+      </div>
+
+      <div class="animate-in flex justify-center gap-6 mt-8 text-sm text-gray-500" style="animation-delay: 0.5s">
+        <span>Requer <strong class="text-gray-300">Docker</strong> e <strong class="text-gray-300">KVM</strong></span>
+        <span class="text-gray-700">|</span>
+        <span>Windows Server 2022</span>
+        <span class="text-gray-700">|</span>
+        <span>Ubuntu 22.04+</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPONENTES -->
+  <section id="componentes" class="py-32 relative">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-20">
+        <div class="badge justify-center mb-6">Componentes</div>
+        <h2 class="text-4xl sm:text-5xl font-black mb-4">Tudo que você precisa<br>para <span class="gradient-text">montar seu laboratório</span></h2>
+        <p class="text-gray-400 text-lg max-w-2xl mx-auto">Do Active Directory ao acesso remoto via navegador — cada serviço foi pensado para ser modular, seguro e fácil de gerenciar.</p>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-orange-500/10 text-orange-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 4l7 1v7l-7-1V4zm0 12l7 1v7l-7-1v-7zm9-13l7 1v7l-7-1V3zm0 12l7 1v7l-7-1v-7z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">Active Directory</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Domínio laboratorio.local com AD DS, DNS integrado, OUs organizacionais e grupos de segurança. Tudo configurado automaticamente via PowerShell.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-purple-500/10 text-purple-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">Apache Guacamole</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Acesso remoto via navegador sem instalar clientes. Autenticação LDAP contra o AD com suporte a grupos aninhados e permissões granulares.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-cyan-500/10 text-cyan-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">E-mail Corporativo</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">hMailServer com SMTP, IMAP e suporte a TLS. Instalado automaticamente dentro do Windows Server. Pronto para configurar domínios e contas.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-orange-500/10 text-orange-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">Windows Server 2022</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Roda via KVM dentro do Docker (dockurr/windows). Setup 100% automatizado: AD, DNS, WinRM e compartilhamento SMB. Acessível via RDP e web UI.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-purple-500/10 text-purple-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">Linux Desktop</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Desktop Ubuntu com ambiente LXDE acessível via VNC ou diretamente pelo Guacamole. Perfeito para testar conectividade e políticas do AD.</p>
+        </div>
+        <div class="glass-card rounded-2xl p-8">
+          <div class="feature-icon bg-cyan-500/10 text-cyan-400 mb-5">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          </div>
+          <h3 class="text-lg font-bold mb-3">Cloudflare Tunnel</h3>
+          <p class="text-gray-400 text-sm leading-relaxed">Exponha o Guacamole publicamente sem abrir portas no firewall. Tunnel gerenciado pelo Cloudflare com perfil opcional no Docker Compose.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEPLOY -->
+  <section id="deploy" class="py-32 relative border-t border-white/5">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <div class="badge justify-center mb-6">Deploy</div>
+      <h2 class="text-4xl sm:text-5xl font-black mb-4">
+        Deploy para <span class="gradient-text">Linux</span>
+      </h2>
+      <p class="text-gray-400 text-lg mb-12 max-w-2xl mx-auto">
+        Seu sistema foi detectado como <strong class="text-gray-200">Linux</strong>.
+        Clone o repositório e execute o Docker Compose.
+      </p>
+
+      <div class="flex flex-wrap justify-center gap-4 mb-16">
+        <button onclick="setPlatform('linux')" class="platform-btn glass-card rounded-2xl px-8 py-5 min-w-[180px] text-center border-orange-500/50 bg-orange-500/10" id="plat-linux">
+          <div class="text-3xl mb-2">&#8981;</div>
+          <div class="font-bold">Linux</div>
+          <div class="text-sm text-gray-500">Docker + KVM</div>
+        </button>
+        <button onclick="setPlatform('windows')" class="platform-btn glass-card rounded-2xl px-8 py-5 min-w-[180px] text-center" data-os="all" id="plat-windows">
+          <div class="text-3xl mb-2">&#9862;</div>
+          <div class="font-bold">Windows</div>
+          <div class="text-sm text-gray-500">WSL2 + Docker</div>
+        </button>
+        <button onclick="setPlatform('macos')" class="platform-btn glass-card rounded-2xl px-8 py-5 min-w-[180px] text-center" data-os="all" id="plat-macos">
+          <div class="text-3xl mb-2">&#63743;</div>
+          <div class="font-bold">macOS</div>
+          <div class="text-sm text-gray-500">Docker Desktop</div>
+        </button>
+      </div>
+
+      <a id="big-deploy-btn" href="https://github.com/TyagoAlves/laboratorio.local.git" target="_blank" class="group relative hero-btn bg-gradient-to-r from-orange-500 via-purple-500 to-cyan-500 text-white font-bold px-12 py-6 rounded-2xl text-xl transition-all duration-300 shadow-xl shadow-orange-500/20 hover:shadow-orange-500/40 inline-flex items-center gap-4">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+        <div class="text-left">
+          <div>Fazer Deploy</div>
+          <div id="deploy-sub" class="text-sm opacity-80 font-normal">git clone + docker compose up</div>
+        </div>
+      </a>
+
+      <div class="mt-8 text-sm text-gray-500">
+        Alternativa:
+        <a href="https://github.com/TyagoAlves/laboratorio.local/archive/refs/heads/main.zip" class="text-cyan-400 hover:underline">baixar código fonte</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK START -->
+  <section id="quickstart" class="py-32 relative border-t border-white/5">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-16">
+        <div class="badge justify-center mb-6">Quick Start</div>
+        <h2 class="text-4xl sm:text-5xl font-black mb-4">
+          Rodando em <span class="gradient-text">10 minutos</span>
+        </h2>
+        <p class="text-gray-400 text-lg">Pré-compilado para Linux. Só executar.</p>
+      </div>
+
+      <div class="glass-card rounded-2xl p-8 max-w-2xl mx-auto">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          </span>
+          <h3 class="text-lg font-bold">
+            Instalação via Linux
+          </h3>
+        </div>
+        <div class="code-block text-sm" id="install-template">
+          <span class="output">&#10003; Pré-requisitos:</span><br>
+          <span class="cmd">sudo apt update && sudo apt install -y docker.io docker-compose-v2 git</span><br>
+          <span class="output">&#10003; Verifique o KVM:</span><br>
+          <span class="cmd">sudo kvm-ok</span><br>
+          <br>
+          <span class="output">&#10003; Clone e execute:</span><br>
+          <span class="cmd">git clone https://github.com/TyagoAlves/laboratorio.local.git</span><br>
+          <span class="cmd">cd laboratorio.local</span><br>
+          <span class="cmd">docker compose up -d</span><br>
+          <br>
+          <span class="output">&#10003; Acompanhe o setup:</span><br>
+          <span class="cmd">docker compose logs -f windows</span>
+        </div>
+        <p class="text-gray-600 text-xs mt-4">Requer: KVM habilitado no kernel. Ubuntu: <code class="text-cyan-400">sudo kvm-ok</code></p>
+      </div>
+
+      <div class="mt-8 text-center">
+        <a href="https://github.com/TyagoAlves/laboratorio.local/issues" target="_blank" class="text-gray-400 hover:text-white transition text-sm">
+          Problemas com a instalação? Abra uma issue no GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACESSOS -->
+  <section id="acessos" class="py-32 relative border-t border-white/5">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-20">
+        <div class="badge justify-center mb-6">Acessos</div>
+        <h2 class="text-4xl sm:text-5xl font-black mb-4">Tudo pronto <span class="gradient-text">pra usar</span></h2>
+        <p class="text-gray-400 text-lg max-w-2xl mx-auto">Portas mapeadas, credenciais padrão e serviços expostos. Só conectar.</p>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-12 max-w-5xl mx-auto items-start">
+        <div class="glass rounded-2xl p-6 font-mono text-xs leading-relaxed overflow-x-auto">
+          <pre class="text-gray-400">
+┌──────────────────────────────────────────┐
+│          laboratorio.local               │
+├──────────────┬───────────────────────────┤
+│  Serviço     │  Endpoint                 │
+├──────────────┼───────────────────────────┤
+│  RDP         │  localhost:3389           │
+│  Guacamole   │  localhost:8080/guacamole/│
+│  KVM Web UI  │  localhost:8006           │
+│  VNC Linux   │  localhost:5900           │
+│  LDAP        │  localhost:389            │
+│  Kerberos    │  localhost:88             │
+│  MySQL       │  mysql:3306               │
+├──────────────┴───────────────────────────┤
+│  Admin: Administrator / SenhaForte@2026  │
+└──────────────────────────────────────────┘
+          </pre>
+        </div>
+        <div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-orange mb-0.5">RDP</div>
+              <div class="text-[11px] text-gray-500">:3389</div>
+              <div class="text-[10px] text-gray-600">Windows</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-purple mb-0.5">LDAP</div>
+              <div class="text-[11px] text-gray-500">:389</div>
+              <div class="text-[10px] text-gray-600">AD DS</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-orange mb-0.5">SMTP</div>
+              <div class="text-[11px] text-gray-500">:25</div>
+              <div class="text-[10px] text-gray-600">hMailServer</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-cyan mb-0.5">IMAP</div>
+              <div class="text-[11px] text-gray-500">:143</div>
+              <div class="text-[10px] text-gray-600">hMailServer</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-orange mb-0.5">VNC</div>
+              <div class="text-[11px] text-gray-500">:5900</div>
+              <div class="text-[10px] text-gray-600">Linux</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-purple mb-0.5">Web</div>
+              <div class="text-[11px] text-gray-500">:8006</div>
+              <div class="text-[10px] text-gray-600">KVM</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-orange mb-0.5">DNS</div>
+              <div class="text-[11px] text-gray-500">:53</div>
+              <div class="text-[10px] text-gray-600">AD</div>
+            </div>
+            <div class="glass-card rounded-xl p-4 text-center">
+              <div class="text-lg font-black gradient-cyan mb-0.5">Kerberos</div>
+              <div class="text-[11px] text-gray-500">:88</div>
+              <div class="text-[10px] text-gray-600">AD</div>
+            </div>
+          </div>
+          <p class="text-gray-600 text-xs mt-5 text-center">Serviços expostos no host. Rede interna Docker isolada em 172.19.0.0/16</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-32 relative border-t border-white/5">
+    <div class="hero-glow hero-glow-1" style="top: -200px; left: -200px;"></div>
+    <div class="max-w-4xl mx-auto px-4 text-center relative z-10">
+      <h2 class="text-5xl sm:text-6xl font-black mb-6">Pronto para<br><span class="gradient-text">implementar?</span></h2>
+      <p class="text-gray-400 text-xl mb-10 max-w-2xl mx-auto">Deploy completo em minutos. <strong class="text-gray-200">100% open source, 100% gratuito.</strong></p>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href="https://github.com/TyagoAlves/laboratorio.local.git" target="_blank" class="group relative hero-btn bg-gradient-to-r from-orange-500 via-purple-500 to-cyan-500 text-white font-bold px-10 py-5 rounded-2xl text-lg transition-all duration-300 shadow-xl shadow-orange-500/20 hover:shadow-orange-500/40 inline-flex items-center gap-3">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+          Fazer Deploy
+        </a>
+        <a href="https://github.com/TyagoAlves/laboratorio.local" target="_blank" class="glass-card text-gray-300 font-semibold px-10 py-5 rounded-2xl text-lg inline-flex items-center gap-3">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="border-t border-white/5 py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-10">
+        <div class="flex items-center gap-3">
+          <span class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 via-purple-500 to-cyan-500 flex items-center justify-center text-white font-bold">LL</span>
+          <div>
+            <span class="font-bold text-lg">laboratorio<span class="text-orange-400">.local</span></span>
+            <p class="text-gray-600 text-xs mt-0.5">Infraestrutura de TI em Docker</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-6 text-sm text-gray-500">
+          <a href="https://github.com/TyagoAlves/laboratorio.local" target="_blank" class="hover:text-gray-300 transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            GitHub
+          </a>
+          <a href="https://github.com/TyagoAlves/laboratorio.local/issues" target="_blank" class="hover:text-gray-300 transition">Reportar Bug</a>
+          <span class="text-gray-600">MIT License</span>
+        </div>
+      </div>
+      <div class="border-t border-white/5 pt-8 text-center text-sm text-gray-600">
+        Construído com Docker, KVM e Windows Server 2022. Nenhum código proprietário foi usado.
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function setPlatform(platform) {
+      document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active', 'border-orange-500/50', 'bg-orange-500/10'));
+      const btn = document.getElementById('plat-' + platform);
+      if (btn) btn.classList.add('active', 'border-orange-500/50', 'bg-orange-500/10');
+
+      const names = { linux: 'Linux', windows: 'Windows', macos: 'macOS' };
+      const installCmds = {
+        linux: [
+          '<span class="output">&#10003; Pr&eacute;-requisitos:</span>',
+          '<span class="cmd">sudo apt update && sudo apt install -y docker.io docker-compose-v2 git</span>',
+          '<span class="output">&#10003; Verifique o KVM:</span>',
+          '<span class="cmd">sudo kvm-ok</span>',
+          '',
+          '<span class="output">&#10003; Clone e execute:</span>',
+          '<span class="cmd">git clone https://github.com/TyagoAlves/laboratorio.local.git</span>',
+          '<span class="cmd">cd laboratorio.local</span>',
+          '<span class="cmd">docker compose up -d</span>',
+          '',
+          '<span class="output">&#10003; Acompanhe o setup:</span>',
+          '<span class="cmd">docker compose logs -f windows</span>',
+        ],
+        windows: [
+          '<span class="output">&#9888; Requer WSL2 + Docker Desktop</span>',
+          '<span class="output">&#10003; No WSL2 (Ubuntu):</span>',
+          '<span class="cmd">sudo apt update && sudo apt install -y docker.io docker-compose-v2 git</span>',
+          '<span class="cmd">git clone https://github.com/TyagoAlves/laboratorio.local.git</span>',
+          '<span class="cmd">cd laboratorio.local</span>',
+          '<span class="cmd">docker compose up -d</span>',
+          '',
+          '<span class="output">&#9888; KVM n&atilde;o dispon&iacute;vel no Windows nativo</span>',
+          '<span class="output">Use uma VM Linux com KVM para melhor performance</span>',
+        ],
+        macos: [
+          '<span class="output">&#9888; Requer Docker Desktop para Mac</span>',
+          '<span class="output">&#10003; Instale o Docker Desktop:</span>',
+          '<span class="cmd">brew install --cask docker</span>',
+          '',
+          '<span class="output">&#10003; Clone e execute:</span>',
+          '<span class="cmd">git clone https://github.com/TyagoAlves/laboratorio.local.git</span>',
+          '<span class="cmd">cd laboratorio.local</span>',
+          '<span class="cmd">docker compose up -d</span>',
+          '',
+          '<span class="output">&#9888; KVM n&atilde;o dispon&iacute;vel no macOS</span>',
+          '<span class="output">Use uma VM Linux com KVM para melhor performance</span>',
+        ],
+      };
+
+      document.querySelectorAll('.gradient-text').forEach(el => { /* keep as is */ });
+      document.querySelectorAll('h2 .gradient-text').forEach(el => el.textContent = names[platform]);
+
+      const tmpl = document.getElementById('install-template');
+      if (tmpl) tmpl.innerHTML = installCmds[platform].join('<br>');
+
+      const subs = {
+        linux: 'git clone + docker compose up',
+        windows: 'WSL2 + Docker Desktop',
+        macos: 'Docker Desktop',
+      };
+      document.getElementById('deploy-sub').textContent = subs[platform];
+    }
+
+    function detectPlatform() {
+      const ua = navigator.userAgent;
+      if (ua.includes('Win')) return 'windows';
+      if (ua.includes('Mac')) return 'macos';
+      return 'linux';
+    }
+
+    setPlatform(detectPlatform());
+
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const id = a.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('mobileMenu')?.classList.add('hidden');
+      });
+    });
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) entry.target.style.animationPlayState = 'running';
+      });
+    });
+    document.querySelectorAll('.animate-in').forEach(el => {
+      el.style.animationPlayState = 'paused';
+      observer.observe(el);
+    });
+  </script>
+</body>
+</html>
