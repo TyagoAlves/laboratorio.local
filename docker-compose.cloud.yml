@@ -1,0 +1,70 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: lab-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: guacamole_db
+      MYSQL_USER: guacamole_user
+      MYSQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-guacamole_pass}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql
+    restart: unless-stopped
+    networks:
+      - lab-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  guacd:
+    image: guacamole/guacd
+    container_name: lab-guacd
+    restart: unless-stopped
+    networks:
+      - lab-network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 4822"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  guacamole:
+    image: guacamole/guacamole
+    container_name: lab-guacamole
+    depends_on:
+      guacd:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      GUACD_HOSTNAME: guacd
+      MYSQL_HOSTNAME: mysql
+      MYSQL_DATABASE: guacamole_db
+      MYSQL_USER: guacamole_user
+      MYSQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-guacamole_pass}
+    restart: unless-stopped
+    networks:
+      - lab-network
+
+  cloudflared:
+    image: cloudflare/cloudflared
+    container_name: lab-cloudflared
+    command: tunnel --url http://guacamole:8080/guacamole/
+    restart: unless-stopped
+    networks:
+      - lab-network
+    depends_on:
+      - guacamole
+
+networks:
+  lab-network:
+    driver: bridge
+
+volumes:
+  mysql_data: {}
