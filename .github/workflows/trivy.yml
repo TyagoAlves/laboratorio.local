@@ -9,13 +9,23 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - mysql:8
+          - guacamole/guacd
+          - guacamole/guacamole
+          - dockurr/windows
+          - mailserver/docker-mailserver:latest
+          - roundcube/roundcubemail:latest
+          - dorowu/ubuntu-desktop-lxde-vnc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Scan images
+      - name: Scan ${{ matrix.image }}
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
-          scan-ref: mysql:8 guacamole/guacd guacamole/guacamole dockurr/windows mailserver/docker-mailserver:latest roundcube/roundcubemail:latest dorowu/ubuntu-desktop-lxde-vnc:latest
+          scan-ref: ${{ matrix.image }}
           format: table
           exit-code: 1
           severity: HIGH,CRITICAL
