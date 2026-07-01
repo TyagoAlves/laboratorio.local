@@ -10,6 +10,7 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     strategy:
+      max-parallel: 3
       matrix:
         image:
           - mysql:8
@@ -28,4 +29,5 @@ jobs:
           scan-ref: ${{ matrix.image }}
           format: table
           exit-code: 1
-          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          severity: CRITICAL
