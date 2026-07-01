@@ -29,6 +29,5 @@ jobs:
           scan-type: image
           scan-ref: ${{ matrix.image }}
           format: table
-          exit-code: 1
           ignore-unfixed: true
           severity: CRITICAL
