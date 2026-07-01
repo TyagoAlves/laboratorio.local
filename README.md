@@ -121,12 +121,12 @@ Usuário → Navegador → Guacamole (:8080) → LDAP (:389) → AD DS (valida c
 
 ### Hardware
 
-| Recurso          | Mínimo     | Recomendado |
-|------------------|------------|-------------|
-| CPU              | 4 cores    | 8 cores     |
-| RAM              | 8 GB       | 16 GB       |
-| Disco            | 80 GB      | 120 GB SSD  |
-| KVM              | Obrigatório | —           |
+| Recurso          | Full Stack  | Cloud (t3.micro) |
+|------------------|-------------|------------------|
+| CPU              | 4 cores     | 2 cores          |
+| RAM              | 8 GB        | 1 GB             |
+| Disco            | 80 GB       | 30 GB            |
+| KVM              | Obrigatório | Não requer       |
 
 ### Software
 
@@ -417,6 +417,23 @@ Expõe o Guacamole publicamente sem abrir portas no firewall. Ative com:
 docker compose --profile tunnel up -d cloudflared
 ```
 
+### Deploy Cloud (AWS Free Tier)
+
+Para ambientes sem KVM (como instâncias t3.micro na AWS), use o `docker-compose.cloud.yml` — versão reduzida sem Windows, Linux Desktop e mailserver:
+
+```bash
+# Iniciar stack cloud (MySQL + Guacd + Guacamole + Cloudflare Tunnel)
+docker compose -f docker-compose.cloud.yml up -d
+
+# Obter URL pública do Cloudflare Tunnel
+docker logs lab-cloudflared 2>&1 | grep -oP 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com'
+```
+
+Acesso via navegador: `https://<url>.trycloudflare.com/guacamole/`
+
+> ⚠️ A URL do Cloudflare Tunnel é efêmera — muda a cada restart do container.
+> Para URL fixa, configure um domínio Cloudflare e use `cloudflared tunnel create`.
+
 ---
 
 ## Active Directory
@@ -642,7 +659,7 @@ done
 2. **Firewall** — nunca exponha portas administrativas (3389, 8006, 5985) à internet
 3. **Cloudflare Tunnel** — prefira o túnel para acesso externo ao Guacamole
 4. **TLS** — configure certificados no Guacamole e no mail server para ambientes produtivos
-5. **Scan de vulnerabilidades** — execute `bash scan.sh` periodicamente para verificar CVEs nas imagens
+5. **Scan de vulnerabilidades** — o pipeline CI (GitHub Actions) escaneia todas as imagens automaticamente em cada push para `main`
 6. **Backup** — faça backup regular dos volumes Docker: `mysql_data` e `windows_disk`
 
 ### Variáveis Sensíveis
@@ -713,29 +730,46 @@ Caso o schema do MySQL não tenha sido criado automaticamente:
 
 ### Scan de Vulnerabilidades (Trivy)
 
-O projeto inclui um script para escanear todas as imagens Docker com [Trivy](https://trivy.dev/).
-
-```bash
-# Escanear todas as imagens (HIGH/CRITICAL)
-bash scan.sh
-
-# Escanear apenas resumo (mais rápido)
-bash scan.sh --summary
-
-# Iniciar servidor de cache Trivy (opcional, acelera scans repetidos)
-bash scan.sh --server
-```
-
-O pipeline CI (GitHub Actions) executa o scan automaticamente em pushes para `main`.
+O pipeline CI escaneia todas as imagens com [Trivy](https://trivy.dev/) automaticamente em cada push para `main` e toda segunda 06:00 UTC.
 
 ```yaml
 # .github/workflows/trivy.yml
 on:
   schedule:
-    - cron: "0 6 * * 1"   # toda segunda 06:00 UTC
+    - cron: "0 6 * * 1"
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        image:
+          - mysql:8
+          - guacamole/guacd
+          - guacamole/guacamole
+          - dockurr/windows
+          - mailserver/docker-mailserver:latest
+          - roundcube/roundcubemail:latest
+          - dorowu/ubuntu-desktop-lxde-vnc:latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Scan ${{ matrix.image }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          scan-ref: ${{ matrix.image }}
+          format: table
+          ignore-unfixed: true
+          severity: CRITICAL
 ```
+
+> O scan executa com `severity: CRITICAL` e `ignore-unfixed: true` — apenas CVEs críticos com correção disponível são reportados, sem bloquear o pipeline.
 
 ### Backup
 
