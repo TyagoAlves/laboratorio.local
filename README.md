@@ -642,7 +642,8 @@ done
 2. **Firewall** — nunca exponha portas administrativas (3389, 8006, 5985) à internet
 3. **Cloudflare Tunnel** — prefira o túnel para acesso externo ao Guacamole
 4. **TLS** — configure certificados no Guacamole e no mail server para ambientes produtivos
-5. **Backup** — faça backup regular dos volumes Docker: `mysql_data` e `windows_disk`
+5. **Scan de vulnerabilidades** — execute `bash scan.sh` periodicamente para verificar CVEs nas imagens
+6. **Backup** — faça backup regular dos volumes Docker: `mysql_data` e `windows_disk`
 
 ### Variáveis Sensíveis
 
@@ -708,6 +709,32 @@ Caso o schema do MySQL não tenha sido criado automaticamente:
 
 # Ou aplicar apenas se o initdb.sql já existir
 ./init/initdb.sh --apply
+```
+
+### Scan de Vulnerabilidades (Trivy)
+
+O projeto inclui um script para escanear todas as imagens Docker com [Trivy](https://trivy.dev/).
+
+```bash
+# Escanear todas as imagens (HIGH/CRITICAL)
+bash scan.sh
+
+# Escanear apenas resumo (mais rápido)
+bash scan.sh --summary
+
+# Iniciar servidor de cache Trivy (opcional, acelera scans repetidos)
+bash scan.sh --server
+```
+
+O pipeline CI (GitHub Actions) executa o scan automaticamente em pushes para `main`.
+
+```yaml
+# .github/workflows/trivy.yml
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # toda segunda 06:00 UTC
+  push:
+    branches: [main]
 ```
 
 ### Backup
