@@ -1,0 +1,28 @@
+name: Trivy Scan
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan images
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: image
+          scan-ref: |
+            mysql:8
+            guacamole/guacd
+            guacamole/guacamole
+            dockurr/windows
+            mailserver/docker-mailserver:latest
+            roundcube/roundcubemail:latest
+            dorowu/ubuntu-desktop-lxde-vnc:latest
+          format: table
+          exit-code: 1
+          severity: HIGH,CRITICAL
