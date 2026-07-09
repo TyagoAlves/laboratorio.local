@@ -52,6 +52,22 @@ services:
     networks:
       - lab-network
 
+  # ─── MeshCentral ──────────────────────────────────────────
+  meshcentral:
+    image: ghcr.io/ylianst/meshcentral:latest
+    container_name: lab-meshcentral
+    environment:
+      HOSTNAME: localhost
+      PORT: "443"
+      RIGHTS: "1"
+    ports:
+      - "4430:443"
+    volumes:
+      - meshcentral_data:/opt/meshcentral/meshcentral-data
+    restart: unless-stopped
+    networks:
+      - lab-network
+
   cloudflared:
     image: cloudflare/cloudflared
     container_name: lab-cloudflared
@@ -62,9 +78,20 @@ services:
     depends_on:
       - guacamole
 
+  meshcloudflared:
+    image: cloudflare/cloudflared
+    container_name: lab-meshcloudflared
+    command: tunnel --url https://meshcentral:443/
+    restart: unless-stopped
+    networks:
+      - lab-network
+    depends_on:
+      - meshcentral
+
 networks:
   lab-network:
     driver: bridge
 
 volumes:
   mysql_data: {}
+  meshcentral_data: {}

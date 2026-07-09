@@ -177,6 +177,25 @@ services:
     networks:
       - lab-network
 
+  # ─── MeshCentral (optional) ────────────────────────────────
+  meshcentral:
+    image: ghcr.io/ylianst/meshcentral:latest
+    container_name: lab-meshcentral
+    environment:
+      HOSTNAME: localhost
+      PORT: "443"
+      RIGHTS: "1"
+    ports:
+      - "4430:443"
+      - "3000:3000"
+    volumes:
+      - meshcentral_data:/opt/meshcentral/meshcentral-data
+    restart: unless-stopped
+    networks:
+      - lab-network
+    profiles:
+      - meshcentral
+
   # ─── Cloudflare Tunnel (optional) ──────────────────────────
   cloudflared:
     image: cloudflare/cloudflared
@@ -199,3 +218,4 @@ volumes:
   windows_disk: {}
   mail_data: {}
   mail_state: {}
+  meshcentral_data: {}

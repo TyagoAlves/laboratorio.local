@@ -58,6 +58,7 @@ O **laboratorio.local** é uma solução completa de infraestrutura de TI rodand
 | **Mail Server**       | Postfix + Dovecot com autenticação LDAP     | 25, 143, 587          |
 | **Webmail**           | Roundcube (webmail com IMAP/SMTP)           | 8081                  |
 | **Linux Desktop**     | Desktop Linux para acesso via Guacamole     | 5900 (VNC)            |
+| **MeshCentral**       | Gerenciamento remoto com agentes leves      | 4430 (WebSocket)      |
 | **Cloudflare Tunnel** | Exposição segura via Cloudflare (opcional)  | —                     |
 
 ---
@@ -409,6 +410,42 @@ roundcube:
 
 Desktop Ubuntu com ambiente LXDE acessível via VNC. Pode ser adicionado como conexão no Guacamole para acesso via navegador.
 
+### MeshCentral (opcional)
+
+[MeshCentral](https://meshcentral.com/) é um servidor de gerenciamento remoto open-source com agentes leves para Windows, Linux e macOS. Os agentes consomem ~20MB RAM e conectam-se ao servidor via WebSocket (porta 443), sem necessidade de abrir portas de entrada.
+
+```yaml
+meshcentral:
+  image: ghcr.io/ylianst/meshcentral:latest
+  container_name: lab-meshcentral
+  environment:
+    HOSTNAME: localhost
+    PORT: "443"
+    RIGHTS: "1"
+  volumes:
+    - meshcentral_data:/opt/meshcentral/meshcentral-data
+```
+
+**Ativar com profile:**
+
+```bash
+docker compose --profile meshcentral up -d meshcentral
+```
+
+**Acessar:** `https://localhost:4430` — crie o usuário admin no primeiro acesso.
+
+**Expor via Cloudflare Tunnel:**
+
+```bash
+docker compose -f docker-compose.cloud.yml up -d meshcloudflared
+docker logs lab-meshcloudflared 2>&1 | grep -oP 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com'
+```
+
+Agentes MeshCentral se conectam ao servidor via WebSocket (porta 443/tunelada), perfeito para cenários onde as máquinas não têm IP público.
+
+> ⚠️ O MeshCentral usa **SQLite** embutido — nenhum banco externo necessário.
+> A senha do admin é definida no primeiro acesso via web.
+
 ### Cloudflare Tunnel (opcional)
 
 Expõe o Guacamole publicamente sem abrir portas no firewall. Ative com:
@@ -419,20 +456,25 @@ docker compose --profile tunnel up -d cloudflared
 
 ### Deploy Cloud (AWS Free Tier)
 
-Para ambientes sem KVM (como instâncias t3.micro na AWS), use o `docker-compose.cloud.yml` — versão reduzida sem Windows, Linux Desktop e mailserver:
+Para ambientes sem KVM (como instâncias t3.micro na AWS), use o `docker-compose.cloud.yml` — versão reduzida sem Windows, Linux Desktop e mailserver, mas com MeshCentral incluso:
 
 ```bash
-# Iniciar stack cloud (MySQL + Guacd + Guacamole + Cloudflare Tunnel)
+# Iniciar stack cloud (MySQL + Guacd + Guacamole + MeshCentral + Cloudflare Tunnel)
 docker compose -f docker-compose.cloud.yml up -d
 
-# Obter URL pública do Cloudflare Tunnel
+# Obter URL do portal Guacamole
 docker logs lab-cloudflared 2>&1 | grep -oP 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com'
+
+# Obter URL do MeshCentral (portal + agentes)
+docker logs lab-meshcloudflared 2>&1 | grep -oP 'https://[a-zA-Z0-9.-]+\.trycloudflare\.com'
 ```
 
-Acesso via navegador: `https://<url>.trycloudflare.com/guacamole/`
+Acessos:
+- **Guacamole:** `https://<guac-url>.trycloudflare.com/guacamole/`
+- **MeshCentral:** `https://<mesh-url>.trycloudflare.com/`
 
-> ⚠️ A URL do Cloudflare Tunnel é efêmera — muda a cada restart do container.
-> Para URL fixa, configure um domínio Cloudflare e use `cloudflared tunnel create`.
+> ⚠️ As URLs do Cloudflare Tunnel são efêmeras — mudam a cada restart dos containers.
+> Para URLs fixas, configure um domínio Cloudflare e use `cloudflared tunnel create`.
 
 ---
 
