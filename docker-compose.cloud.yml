@@ -81,7 +81,7 @@ services:
   meshcloudflared:
     image: cloudflare/cloudflared
     container_name: lab-meshcloudflared
-    command: tunnel --url http://meshcentral:80/
+    command: tunnel --url http://meshcentral:3000/
     restart: unless-stopped
     networks:
       - lab-network
