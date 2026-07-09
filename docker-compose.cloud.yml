@@ -48,6 +48,19 @@ services:
       MYSQL_DATABASE: guacamole_db
       MYSQL_USER: guacamole_user
       MYSQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:-guacamole_pass}
+      # LDAP Authentication (Active Directory)
+      LDAP_HOSTNAME: windows
+      LDAP_PORT: "389"
+      LDAP_ENCRYPTION_METHOD: none
+      LDAP_USER_BASE_DN: DC=laboratorio,DC=local
+      LDAP_USERNAME_ATTRIBUTE: sAMAccountName
+      LDAP_SEARCH_BIND_DN: CN=Administrator,CN=Users,DC=laboratorio,DC=local
+      LDAP_SEARCH_BIND_PASSWORD: ${ADMIN_PASSWORD:-SenhaForte@2026}
+      LDAP_GROUP_BASE_DN: DC=laboratorio,DC=local
+      LDAP_GROUP_NAME_ATTRIBUTE: cn
+      LDAP_MEMBER_ATTRIBUTE: member
+      LDAP_GROUP_SEARCH_FILTER: "(objectClass=group)"
+      LDAP_NESTED_GROUPS: "true"
     restart: unless-stopped
     networks:
       - lab-network
